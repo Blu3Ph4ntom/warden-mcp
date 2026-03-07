@@ -74,3 +74,35 @@ func TestParseRejectsTooManyLines(t *testing.T) {
 		t.Fatalf("expected ErrPlanTooManyLines, got %v", err)
 	}
 }
+
+func TestParseReadsTaskMetadata(t *testing.T) {
+	content := `---
+plan_id: metadata-plan
+title: Metadata Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+---
+
+# Metadata Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo | priority:P1 | depends_on:PH00-T01,PH00-T02 | required:false
+- [ ] PH01-T02 run tests
+
+## Phase 2 — Ship
+- [ ] PH02-T01 release
+- [ ] PH02-T02 verify
+`
+	plan, issues, err := Parse(content, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("expected no warnings, got %+v", issues)
+	}
+	task := plan.Phases[0].Tasks[0]
+	if task.Priority != domain.PriorityP1 || task.Required || len(task.DependsOn) != 2 || task.DependsOn[0] != "PH00-T01" {
+		t.Fatalf("unexpected task metadata %+v", task)
+	}
+}

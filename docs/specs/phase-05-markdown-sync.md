@@ -61,14 +61,20 @@ Unknown frontmatter keys are preserved during export/import only if namespaced u
 
 ## Priority and dependency annotations
 
-Optional per-task metadata is written immediately below the task line as indented bullets:
+Current implementation writes optional per-task metadata inline on the task line using pipe-delimited key/value segments:
+
+- `- [ ] PH01-T01 Description | priority:P1`
+- `- [ ] PH01-T02 Description | depends_on:PH01-T01,PH01-T03 | required:false`
+
+Supported keys today:
 
 - `priority: P0|P1|P2|P3`
-- `depends_on: PH##-T##, PH##-T##`
+- `depends_on: PH##-T##,PH##-T##`
 - `required: true|false`
-- `status: not_started|in_progress|done|blocked|cancelled|waived`
 
-`status:` is included when the checkbox alone would be ambiguous, especially for `blocked`, `cancelled`, and `waived`.
+If no metadata is needed, the task line remains the plain `- [ ] PH##-T## Description` form.
+
+`blocked`, `cancelled`, and `waived` still project through the checkbox marker because the current markdown projection intentionally stays compact.
 
 ## Note and evidence blocks
 

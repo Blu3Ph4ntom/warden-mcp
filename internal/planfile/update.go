@@ -30,7 +30,7 @@ func UpdateTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain
 }
 
 func UpdateTaskStatusContent(content, taskID string, target domain.TaskStatus) (string, error) {
-	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	lines := splitNormalizedLines(content)
 	matches := 0
 	for i, line := range lines {
 		match := taskLinePattern.FindStringSubmatch(line)
@@ -45,9 +45,21 @@ func UpdateTaskStatusContent(content, taskID string, target domain.TaskStatus) (
 		if err != nil {
 			return "", err
 		}
-		lines[i] = strings.Replace(line, "["+match[1]+"]", "["+marker+"]", 1)
+		lines[i] = replaceTaskMarker(line, match[1], marker)
 		matches++
 	}
+	return finalizeUpdatedContent(lines, matches, taskID)
+}
+
+func splitNormalizedLines(content string) []string {
+	return strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+}
+
+func replaceTaskMarker(line, currentMarker, targetMarker string) string {
+	return strings.Replace(line, "["+currentMarker+"]", "["+targetMarker+"]", 1)
+}
+
+func finalizeUpdatedContent(lines []string, matches int, taskID string) (string, error) {
 	if matches == 0 {
 		return "", fmt.Errorf("task not found: %s", taskID)
 	}

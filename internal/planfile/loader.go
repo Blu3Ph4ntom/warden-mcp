@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -126,7 +127,9 @@ func parsePhases(lines []string, updatedAt time.Time) ([]domain.Phase, []domain.
 			issues = append(issues, domain.ValidationIssue{Severity: "error", Code: "TASK_PHASE_SECTION_MISMATCH", Message: "task ID does not match current phase section", Path: match[2]})
 			continue
 		}
-		current.Tasks = append(current.Tasks, domain.Task{TaskID: match[2], PhaseID: phaseID, Title: strings.TrimSpace(match[3]), Status: checkboxStatus(match[1]), Priority: domain.PriorityP2, Required: true, UpdatedAt: updatedAt})
+		title, priority, dependsOn, required, metaIssues := parseTaskMetadata(match[3], match[2])
+		issues = append(issues, metaIssues...)
+		current.Tasks = append(current.Tasks, domain.Task{TaskID: match[2], PhaseID: phaseID, Title: title, Status: checkboxStatus(match[1]), Priority: priority, DependsOn: dependsOn, Required: required, UpdatedAt: updatedAt})
 	}
 	if current != nil {
 		phases = append(phases, *current)
@@ -200,4 +203,61 @@ func canFinish(plan domain.Plan) bool {
 		}
 	}
 	return true
+}
+
+func parseTaskMetadata(raw, taskID string) (string, domain.Priority, []string, bool, []domain.ValidationIssue) {
+	parts := strings.Split(raw, " | ")
+	title := strings.TrimSpace(parts[0])
+	priority := domain.PriorityP2
+	dependsOn := make([]string, 0)
+	required := true
+	issues := make([]domain.ValidationIssue, 0)
+	for _, segment := range parts[1:] {
+		key, value, ok := strings.Cut(strings.TrimSpace(segment), ":")
+		if !ok {
+			issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_METADATA_IGNORED", Message: "task metadata segment could not be parsed", Path: taskID})
+			continue
+		}
+		key = strings.TrimSpace(strings.ToLower(key))
+		value = strings.TrimSpace(value)
+		switch key {
+		case "priority":
+			candidate := domain.Priority(strings.ToUpper(value))
+			if !candidate.Valid() {
+				issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_PRIORITY_INVALID", Message: "task priority metadata is invalid", Path: taskID})
+				continue
+			}
+			priority = candidate
+		case "depends_on":
+			dependsOn = parseCSVList(value)
+		case "required":
+			switch strings.ToLower(value) {
+			case "true":
+				required = true
+			case "false":
+				required = false
+			default:
+				issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_REQUIRED_INVALID", Message: "task required metadata must be true or false", Path: taskID})
+			}
+		default:
+			issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_METADATA_IGNORED", Message: "unknown task metadata key ignored", Path: taskID})
+		}
+	}
+	return title, priority, dependsOn, required, issues
+}
+
+func parseCSVList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	sort.Strings(result)
+	return result
 }

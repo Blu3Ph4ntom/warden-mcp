@@ -57,63 +57,63 @@ type ValidationIssue struct {
 }
 
 type EvidenceItem struct {
-	Kind    string
-	Ref     string
-	Summary string
+	Kind    string `json:"kind"`
+	Ref     string `json:"ref"`
+	Summary string `json:"summary"`
 }
 
 type Note struct {
-	ActorType ActorType
-	Text      string
-	CreatedAt time.Time
+	ActorType ActorType `json:"actor_type"`
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Task struct {
-	TaskID    string
-	PhaseID   string
-	Title     string
-	Status    TaskStatus
-	Priority  Priority
-	DependsOn []string
-	Required  bool
-	Evidence  []EvidenceItem
-	Notes     []Note
-	UpdatedAt time.Time
+	TaskID    string         `json:"task_id"`
+	PhaseID   string         `json:"phase_id"`
+	Title     string         `json:"title"`
+	Status    TaskStatus     `json:"status"`
+	Priority  Priority       `json:"priority"`
+	DependsOn []string       `json:"depends_on,omitempty"`
+	Required  bool           `json:"required"`
+	Evidence  []EvidenceItem `json:"evidence,omitempty"`
+	Notes     []Note         `json:"notes,omitempty"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 type Phase struct {
-	PhaseID string
-	Title   string
-	Status  PhaseStatus
-	Tasks   []Task
+	PhaseID string      `json:"phase_id"`
+	Title   string      `json:"title"`
+	Status  PhaseStatus `json:"status"`
+	Tasks   []Task      `json:"tasks"`
 }
 
 type Plan struct {
-	PlanID         string
-	Title          string
-	Status         PlanStatus
-	Version        string
-	CurrentPhaseID string
-	Phases         []Phase
-	CanFinish      bool
-	UpdatedAt      time.Time
+	PlanID         string     `json:"plan_id"`
+	Title          string     `json:"title"`
+	Status         PlanStatus `json:"status"`
+	Version        string     `json:"version"`
+	CurrentPhaseID string     `json:"current_phase_id,omitempty"`
+	Phases         []Phase    `json:"phases"`
+	CanFinish      bool       `json:"can_finish"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type AuditEvent struct {
-	EventID   string
-	PlanID    string
-	ActorType ActorType
-	EventType string
-	Accepted  bool
-	Timestamp time.Time
-	Message   string
+	EventID   string    `json:"event_id"`
+	PlanID    string    `json:"plan_id"`
+	ActorType ActorType `json:"actor_type"`
+	EventType string    `json:"event_type"`
+	Accepted  bool      `json:"accepted"`
+	Timestamp time.Time `json:"timestamp"`
+	Message   string    `json:"message"`
 }
 
 type FinishRequest struct {
-	PlanID      string
-	ActorType   ActorType
-	Summary     string
-	RequestedAt time.Time
+	PlanID      string    `json:"plan_id"`
+	ActorType   ActorType `json:"actor_type"`
+	Summary     string    `json:"summary,omitempty"`
+	RequestedAt time.Time `json:"requested_at"`
 }
 
 func (s PlanStatus) Valid() bool {
