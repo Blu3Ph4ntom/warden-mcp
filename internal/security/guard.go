@@ -10,6 +10,13 @@ import (
 	"strings"
 )
 
+const WorkspaceRootOverrideEnv = "WARDEN_WORKSPACE_ROOT"
+
+type WorkspaceRootResolution struct {
+	Root   string
+	Source string
+}
+
 var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)sk-[a-z0-9]{16,}`),
 	regexp.MustCompile(`ghp_[A-Za-z0-9]{20,}`),
@@ -20,6 +27,10 @@ type FileFingerprint struct {
 	Path   string
 	Size   int64
 	SHA256 string
+}
+
+func ResolveProcessWorkspaceRoot() (WorkspaceRootResolution, error) {
+	return resolveProcessWorkspaceRoot(os.Getenv, os.Getwd, os.UserHomeDir)
 }
 
 func ResolveWorkspacePath(workspaceRoot, requestedPath string, allowedExts ...string) (string, error) {
@@ -70,6 +81,79 @@ func ResolveWorkspacePath(workspaceRoot, requestedPath string, allowedExts ...st
 		}
 	}
 	return targetResolved, nil
+}
+
+func resolveProcessWorkspaceRoot(getenv func(string) string, getwd func() (string, error), userHomeDir func() (string, error)) (WorkspaceRootResolution, error) {
+	if override := strings.TrimSpace(getenv(WorkspaceRootOverrideEnv)); override != "" {
+		resolved, err := normalizeWorkspaceRoot(override)
+		if err != nil {
+			return WorkspaceRootResolution{}, fmt.Errorf("resolve %s: %w", WorkspaceRootOverrideEnv, err)
+		}
+		return WorkspaceRootResolution{Root: resolved, Source: "env"}, nil
+	}
+	cwd, err := getwd()
+	if err != nil {
+		return WorkspaceRootResolution{}, err
+	}
+	resolvedCWD, err := normalizeWorkspaceRoot(cwd)
+	if err != nil {
+		return WorkspaceRootResolution{}, fmt.Errorf("resolve working directory: %w", err)
+	}
+	if !isUnsafeWorkspaceRoot(resolvedCWD, getenv) {
+		return WorkspaceRootResolution{Root: resolvedCWD, Source: "cwd"}, nil
+	}
+	home, err := userHomeDir()
+	if err != nil {
+		return WorkspaceRootResolution{}, fmt.Errorf("resolve fallback home directory: %w", err)
+	}
+	resolvedHome, err := normalizeWorkspaceRoot(filepath.Join(home, ".warden-mcp", "workspaces", "default"))
+	if err != nil {
+		return WorkspaceRootResolution{}, fmt.Errorf("resolve fallback workspace root: %w", err)
+	}
+	return WorkspaceRootResolution{Root: resolvedHome, Source: "home_fallback"}, nil
+}
+
+func normalizeWorkspaceRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", fmt.Errorf("workspace root is required")
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	return evalSymlinksAllowMissing(abs)
+}
+
+func isUnsafeWorkspaceRoot(root string, getenv func(string) string) bool {
+	cleaned := filepath.Clean(root)
+	if cleaned == filepath.Dir(cleaned) {
+		return true
+	}
+	if windir := strings.TrimSpace(getenv("WINDIR")); windir != "" {
+		resolvedWindir, err := normalizeWorkspaceRoot(windir)
+		if err == nil && pathWithinOrEqual(resolvedWindir, cleaned) {
+			return true
+		}
+	}
+	for _, envName := range []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramData"} {
+		candidate := strings.TrimSpace(getenv(envName))
+		if candidate == "" {
+			continue
+		}
+		resolvedCandidate, err := normalizeWorkspaceRoot(candidate)
+		if err == nil && pathWithinOrEqual(resolvedCandidate, cleaned) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathWithinOrEqual(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel == "." || rel == "" || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }
 
 func evalSymlinksAllowMissing(path string) (string, error) {

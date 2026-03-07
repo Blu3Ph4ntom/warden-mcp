@@ -73,6 +73,8 @@ For most clients, the first helpful call after connecting is `health_check`, fol
 
 By default, repository plans typically live at `.agent/PLAN.md`.
 
+If `warden-mcp` is launched from an unsafe OS directory such as Windows `System32`, it will refuse to treat that location as the workspace and will fall back to `~/.warden-mcp/workspaces/default/.agent/PLAN.md` instead. If your MCP client supports environment variables, set `WARDEN_WORKSPACE_ROOT` to your project root to keep plans stored inside the repo.
+
 ## MCP client setup examples
 
 ### Claude Code (`.mcp.json`)

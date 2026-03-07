@@ -51,10 +51,11 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	workspaceRoot, err := os.Getwd()
+	workspace, err := security.ResolveProcessWorkspaceRoot()
 	if err != nil {
 		return writeError(stdout, command, contracts.ErrInternal, err.Error())
 	}
+	workspaceRoot := workspace.Root
 	var recorder observe.Recorder
 	if *logEvents || os.Getenv("WARDEN_LOG_JSON") == "1" {
 		recorder = observe.NewJSONRecorder(stderr)

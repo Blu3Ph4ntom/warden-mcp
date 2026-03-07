@@ -374,6 +374,55 @@ func TestRunWithoutArgsDefaultsToServeAndHandlesStatusCall(t *testing.T) {
 	testRunServeLikeCommandHandlesInitializeAndStatusCall(t, []string{})
 }
 
+func TestRunFallsBackFromUnsafeWindowsCWDForInitPlan(t *testing.T) {
+	base := t.TempDir()
+	windir := filepath.Join(base, "Windows")
+	unsafeCWD := filepath.Join(windir, "System32")
+	home := filepath.Join(base, "home")
+	if err := os.MkdirAll(unsafeCWD, 0o755); err != nil {
+		t.Fatalf("mkdir unsafe cwd failed: %v", err)
+	}
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home failed: %v", err)
+	}
+	t.Setenv("WINDIR", windir)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(previousWD) }()
+	if err := os.Chdir(unsafeCWD); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdin := &bytes.Buffer{}
+	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": "2025-11-25", "clientInfo": map[string]any{"name": "test", "version": "1.0.0"}}})
+	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "init_plan", "arguments": map[string]any{"title": "Fallback Plan", "version": "1.0", "phases": []map[string]any{{"title": "Design", "tasks": []map[string]any{{"title": "define scope"}, {"title": "review scope"}}}, {"title": "Build", "tasks": []map[string]any{{"title": "implement fix"}, {"title": "verify fix"}}}}}}})
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := runWithIO([]string{}, stdin, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
+	}
+	frames := readFrames(t, stdout.Bytes())
+	if len(frames) != 2 || !strings.Contains(string(frames[1]), `"tool":"init_plan"`) || !strings.Contains(string(frames[1]), `"ok":true`) {
+		t.Fatalf("expected successful init_plan response, got %q", stdout.String())
+	}
+	fallbackPlan := filepath.Join(home, ".warden-mcp", "workspaces", "default", ".agent", "PLAN.md")
+	if _, err := os.Stat(fallbackPlan); err != nil {
+		t.Fatalf("expected fallback plan at %s: %v", fallbackPlan, err)
+	}
+	if _, err := os.Stat(filepath.Join(unsafeCWD, ".agent", "PLAN.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected no plan created under unsafe cwd, got err=%v", err)
+	}
+	content, err := os.ReadFile(fallbackPlan)
+	if err != nil || !strings.Contains(string(content), "Fallback Plan") {
+		t.Fatalf("expected fallback plan content, err=%v content=%s", err, string(content))
+	}
+}
+
 func testRunServeLikeCommandHandlesInitializeAndStatusCall(t *testing.T, args []string) {
 	root := t.TempDir()
 	planPath := filepath.Join(root, ".agent", "PLAN.md")

@@ -19,7 +19,7 @@ import (
 
 const ProtocolVersion = "2025-11-25"
 const AgentGuideVersion = "2026-03-07"
-const ServerVersion = "0.1.3"
+const ServerVersion = "0.1.4"
 
 var supportedProtocolVersions = []string{
 	"2024-11-05",

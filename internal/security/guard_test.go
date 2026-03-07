@@ -43,6 +43,55 @@ func TestResolveWorkspacePathRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestResolveProcessWorkspaceRootPrefersExplicitOverride(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "repo")
+	resolution, err := resolveProcessWorkspaceRoot(func(key string) string {
+		if key == WorkspaceRootOverrideEnv {
+			return override
+		}
+		return ""
+	}, func() (string, error) {
+		return filepath.Join(t.TempDir(), "Windows", "System32"), nil
+	}, func() (string, error) {
+		return filepath.Join(t.TempDir(), "home"), nil
+	})
+	if err != nil {
+		t.Fatalf("resolve workspace root failed: %v", err)
+	}
+	if resolution.Source != "env" {
+		t.Fatalf("expected env source, got %+v", resolution)
+	}
+	if resolution.Root != filepath.Clean(override) {
+		t.Fatalf("expected override root %s, got %s", override, resolution.Root)
+	}
+}
+
+func TestResolveProcessWorkspaceRootFallsBackFromWindowsSystemDirectory(t *testing.T) {
+	base := t.TempDir()
+	windir := filepath.Join(base, "Windows")
+	home := filepath.Join(base, "home")
+	resolution, err := resolveProcessWorkspaceRoot(func(key string) string {
+		if key == "WINDIR" {
+			return windir
+		}
+		return ""
+	}, func() (string, error) {
+		return filepath.Join(windir, "System32"), nil
+	}, func() (string, error) {
+		return home, nil
+	})
+	if err != nil {
+		t.Fatalf("resolve workspace root failed: %v", err)
+	}
+	expected := filepath.Join(home, ".warden-mcp", "workspaces", "default")
+	if resolution.Source != "home_fallback" {
+		t.Fatalf("expected home fallback source, got %+v", resolution)
+	}
+	if resolution.Root != filepath.Clean(expected) {
+		t.Fatalf("expected fallback root %s, got %s", expected, resolution.Root)
+	}
+}
+
 func TestFingerprintFileAndRedactionHelpers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "PLAN.md")
 	if err := os.WriteFile(path, []byte("token sk-1234567890abcdef\n"), 0o644); err != nil {
