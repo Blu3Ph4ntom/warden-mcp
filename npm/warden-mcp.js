@@ -1,66 +1,24 @@
 #!/usr/bin/env node
 
 const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { assetName, installedBinaryPath, packageVersion } = require('./native');
 
-const BINARY_NAME = process.platform === 'win32' ? 'warden-mcp.exe' : 'warden-mcp';
-const INSTALL_COMMAND = 'go install github.com/Blu3Ph4ntom/warden-mcp/cmd/warden-mcp@latest';
-
-function unique(items) {
-  return [...new Set(items.filter(Boolean))];
-}
-
-function candidateDirs() {
-  const dirs = [];
-  if (process.env.WARDEN_MCP_NATIVE_PATH) {
-    dirs.push(path.dirname(process.env.WARDEN_MCP_NATIVE_PATH));
-  }
-  if (process.env.GOBIN) {
-    dirs.push(process.env.GOBIN);
-  }
-  if (process.env.GOPATH) {
-    dirs.push(...process.env.GOPATH.split(path.delimiter).map((entry) => path.join(entry, 'bin')));
-  }
-  dirs.push(path.join(os.homedir(), 'go', 'bin'));
-  return unique(dirs);
-}
-
-function candidateBinaries() {
-  const binaries = [];
-  if (process.env.WARDEN_MCP_NATIVE_PATH) {
-    binaries.push(process.env.WARDEN_MCP_NATIVE_PATH);
-  }
-  for (const dir of candidateDirs()) {
-    binaries.push(path.join(dir, BINARY_NAME));
-  }
-  return unique(binaries);
-}
-
-function findNativeBinary() {
-  return candidateBinaries().find((candidate) => {
-    try {
-      return fs.existsSync(candidate) && fs.statSync(candidate).isFile();
-    } catch {
-      return false;
-    }
-  });
-}
-
-function printSetupHelp() {
-  const lookedIn = candidateBinaries().map((candidate) => `  - ${candidate}`).join('\n');
+function printInstallHelp(binaryPath) {
+  const expectedAsset = assetName(packageVersion());
   console.error(
     [
-      'warden-mcp npm launcher could not find the native Warden MCP binary.',
+      'warden-mcp could not find its npm-installed native binary.',
       '',
-      'Install Go 1.24+ and then run:',
-      `  ${INSTALL_COMMAND}`,
+      `Expected installed binary: ${binaryPath}`,
+      `Expected release asset: ${expectedAsset}`,
       '',
-      'Make sure your Go bin directory is on PATH, then retry `warden-mcp`.',
+      'Try one of these recovery steps:',
+      '  npm rebuild warden-mcp',
+      '  npm install -g warden-mcp --force',
       '',
-      'Searched:',
-      lookedIn,
+      'Fallback native install:',
+      '  go install github.com/Blu3Ph4ntom/warden-mcp/cmd/warden-mcp@latest',
     ].join('\n')
   );
   process.exit(1);
@@ -81,9 +39,9 @@ function run(binaryPath) {
   });
 }
 
-const binaryPath = findNativeBinary();
-if (!binaryPath) {
-  printSetupHelp();
+const binaryPath = installedBinaryPath();
+if (!fs.existsSync(binaryPath)) {
+  printInstallHelp(binaryPath);
 }
 
 run(binaryPath);

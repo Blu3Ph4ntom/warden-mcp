@@ -3,6 +3,7 @@
 # Go
 bin/
 dist/
+npm/native/
 *.exe
 *.out
 *.test

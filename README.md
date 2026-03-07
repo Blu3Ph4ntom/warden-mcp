@@ -4,7 +4,7 @@ Warden MCP is a plan-governance MCP server for coding agents. It keeps agents on
 
 ## Install
 
-### Native install (recommended)
+### Native install via Go
 
 Prerequisite: Go 1.24+
 
@@ -18,9 +18,9 @@ Then make sure your Go bin directory is on `PATH` and verify the binary is avail
 warden-mcp --help
 ```
 
-### Optional npm launcher
+### Native install via npm
 
-If you prefer installing a small Node-based launcher alongside your other CLI tools:
+If you prefer installing through npm, the published package downloads the correct native `warden-mcp` binary for your platform during installation.
 
 ```sh
 npm install -g warden-mcp
@@ -32,7 +32,7 @@ or:
 npx warden-mcp --help
 ```
 
-The npm package is a **thin launcher**. It does **not** bundle the Go server. It forwards to the native `warden-mcp` binary from the Go install above, and prints setup guidance if that binary is missing.
+This is now a **real native install path**. Go is not required for npm users, but the installer does need network access to the matching GitHub Release asset for the package version.
 
 ## What Warden MCP provides
 
@@ -146,10 +146,28 @@ args = []
 
 If your client supports environment variables, add them alongside the command in that client's native format.
 
+## Release packaging
+
+For each npm release, publish matching GitHub Release assets first:
+
+- `warden-mcp_<version>_windows_amd64.exe`
+- `warden-mcp_<version>_windows_arm64.exe`
+- `warden-mcp_<version>_darwin_amd64`
+- `warden-mcp_<version>_darwin_arm64`
+- `warden-mcp_<version>_linux_amd64`
+- `warden-mcp_<version>_linux_arm64`
+- `warden-mcp_<version>_checksums.txt`
+
+Generate them from the repo root with:
+
+```sh
+npm run build:release
+```
+
 ## Troubleshooting
 
 - `warden-mcp: command not found`: ensure your Go bin directory is on `PATH`.
-- npm launcher prints setup help: install the native Go binary with the `go install` command above.
+- npm install failed to fetch the native binary: run `npm rebuild warden-mcp` or reinstall after publishing the matching GitHub Release assets.
 - client connects but the workflow seems unclear: run `health_check`, then `get_status`, and make sure the repository has a valid plan file.
 - manual plan edits caused drift: use `validate_plan` and `reconcile_plan` before continuing.
 
@@ -160,8 +178,9 @@ From the repository root:
 ```sh
 go test ./...
 npm test
+npm run build:release
 ```
 
 ## License
 
-No license file is currently included in this repository. Add one before broad public distribution if needed.
+MIT

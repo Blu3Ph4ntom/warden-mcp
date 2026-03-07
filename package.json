@@ -1,15 +1,20 @@
 {
   "name": "warden-mcp",
-  "version": "0.1.0",
-  "description": "Thin npm launcher for the native Warden MCP Go server",
+  "version": "0.1.1",
+  "description": "Native npm installer and Go distribution for the Warden MCP server",
   "bin": {
     "warden-mcp": "./npm/warden-mcp.js"
   },
   "files": [
+    "LICENSE",
+    "npm/install.js",
+    "npm/native.js",
     "npm/warden-mcp.js",
     "README.md"
   ],
   "scripts": {
+    "build:release": "node ./scripts/build-release-binaries.mjs",
+    "postinstall": "node ./npm/install.js",
     "test": "node --test test/npm-wrapper.test.mjs",
     "pack:check": "npm pack --dry-run"
   },
@@ -34,5 +39,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }
