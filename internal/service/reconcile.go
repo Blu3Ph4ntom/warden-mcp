@@ -20,13 +20,15 @@ func ReconcilePlan(planPath string, req contracts.ReconcilePlanRequest) (contrac
 	if err != nil {
 		return contracts.ReconcilePlanData{}, warnings, err
 	}
+	normalized := normalizeReconciledPlan(candidate)
 	conflicts, changedIDs := reconcileDiff(active, candidate, req.PlanID)
-	conflicts = append(conflicts, validationConflicts(candidate)...)
+	conflicts = append(conflicts, topLevelStateConflicts(candidate, normalized)...)
+	conflicts = append(conflicts, validationConflicts(normalized)...)
 	data := contracts.ReconcilePlanData{Reconciled: len(conflicts) == 0, Conflicts: conflicts, ChangedIDs: changedIDs, Plan: summarizePlan(active, finishReady(active))}
 	if len(conflicts) > 0 || req.Mode == contracts.ReconcileDryRun || req.Mode == "" {
 		return data, warnings, nil
 	}
-	updated, writeWarnings, err := planfile.WritePlanFile(planPath, candidate)
+	updated, writeWarnings, err := planfile.WritePlanFile(planPath, normalized)
 	warnings = append(warnings, writeWarnings...)
 	if err != nil {
 		return contracts.ReconcilePlanData{}, warnings, err
@@ -139,4 +141,37 @@ func validationConflicts(plan domain.Plan) []contracts.Conflict {
 		conflicts = append(conflicts, contracts.Conflict{Code: issue.Code, Message: issue.Message, TargetID: issue.Path})
 	}
 	return conflicts
+}
+
+func topLevelStateConflicts(raw, normalized domain.Plan) []contracts.Conflict {
+	conflicts := make([]contracts.Conflict, 0)
+	if raw.Status != normalized.Status {
+		conflicts = append(conflicts, contracts.Conflict{Code: "PLAN_STATUS_DRIFT", Message: "candidate markdown plan status does not match derived plan status", TargetID: string(raw.Status)})
+	}
+	if raw.CurrentPhaseID != normalized.CurrentPhaseID {
+		conflicts = append(conflicts, contracts.Conflict{Code: "CURRENT_PHASE_DRIFT", Message: "candidate markdown current_phase does not match derived current phase", TargetID: raw.CurrentPhaseID})
+	}
+	return conflicts
+}
+
+func normalizeReconciledPlan(plan domain.Plan) domain.Plan {
+	for index := range plan.Phases {
+		plan.Phases[index].Status = planfile.RollupPhaseStatus(plan.Phases[index])
+	}
+	plan.Status = planfile.RollupPlanStatus(plan)
+	plan.CanFinish = planfile.CanFinishPlan(plan)
+	plan.CurrentPhaseID = nextReconcileCurrentPhaseID(plan)
+	return plan
+}
+
+func nextReconcileCurrentPhaseID(plan domain.Plan) string {
+	for _, phase := range plan.Phases {
+		if phase.Status != domain.PhaseCompleted {
+			return phase.PhaseID
+		}
+	}
+	if len(plan.Phases) == 0 {
+		return ""
+	}
+	return plan.Phases[len(plan.Phases)-1].PhaseID
 }

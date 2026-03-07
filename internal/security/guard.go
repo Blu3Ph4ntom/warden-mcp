@@ -33,6 +33,10 @@ func ResolveWorkspacePath(workspaceRoot, requestedPath string, allowedExts ...st
 	if err != nil {
 		return "", fmt.Errorf("resolve workspace root: %w", err)
 	}
+	rootResolved, err := evalSymlinksAllowMissing(rootAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace root symlinks: %w", err)
+	}
 	target := requestedPath
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(rootAbs, target)
@@ -41,7 +45,11 @@ func ResolveWorkspacePath(workspaceRoot, requestedPath string, allowedExts ...st
 	if err != nil {
 		return "", fmt.Errorf("resolve target path: %w", err)
 	}
-	rel, err := filepath.Rel(rootAbs, targetAbs)
+	targetResolved, err := evalSymlinksAllowMissing(targetAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve target symlinks: %w", err)
+	}
+	rel, err := filepath.Rel(rootResolved, targetResolved)
 	if err != nil {
 		return "", fmt.Errorf("compare target path: %w", err)
 	}
@@ -61,7 +69,33 @@ func ResolveWorkspacePath(workspaceRoot, requestedPath string, allowedExts ...st
 			return "", fmt.Errorf("path must use one of the allowed extensions: %v", allowedExts)
 		}
 	}
-	return targetAbs, nil
+	return targetResolved, nil
+}
+
+func evalSymlinksAllowMissing(path string) (string, error) {
+	cleaned := filepath.Clean(path)
+	missing := make([]string, 0)
+	probe := cleaned
+	for {
+		if _, err := os.Lstat(probe); err == nil {
+			resolved, err := filepath.EvalSymlinks(probe)
+			if err != nil {
+				return "", err
+			}
+			for index := len(missing) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, missing[index])
+			}
+			return filepath.Clean(resolved), nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return filepath.Abs(cleaned)
+		}
+		missing = append(missing, filepath.Base(probe))
+		probe = parent
+	}
 }
 
 func FingerprintFile(path string, maxBytes int64) (FileFingerprint, error) {

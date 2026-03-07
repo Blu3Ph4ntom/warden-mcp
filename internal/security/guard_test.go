@@ -28,6 +28,21 @@ func TestResolveWorkspacePathRejectsTraversalAndWrongExtension(t *testing.T) {
 	}
 }
 
+func TestResolveWorkspacePathRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.md"), []byte("secret"), 0o644); err != nil {
+		t.Fatalf("write outside file failed: %v", err)
+	}
+	linkPath := filepath.Join(root, "linked")
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	if _, err := ResolveWorkspacePath(root, filepath.Join("linked", "secret.md"), ".md"); err == nil {
+		t.Fatal("expected symlink escape to fail")
+	}
+}
+
 func TestFingerprintFileAndRedactionHelpers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "PLAN.md")
 	if err := os.WriteFile(path, []byte("token sk-1234567890abcdef\n"), 0o644); err != nil {
