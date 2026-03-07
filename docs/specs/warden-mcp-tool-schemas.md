@@ -136,9 +136,10 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan"]`
+- `required: []`
 - `properties:`
-  - `plan: object`
+  - `plan?: object`
+  - `plan_path?: string`
   - `mode?: "strict" | "import" | "lint"`
 
 ### Output `data`
