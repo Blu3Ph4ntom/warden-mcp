@@ -196,6 +196,62 @@ completed_tasks: 0
 	}
 }
 
+func TestRunPrioritizeCommandEmitsEnvelope(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	content := `---
+plan_id: prioritize-plan
+title: Prioritize Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Prioritize Plan
+
+## Phase 1 — Design
+- [ ] PH01-T01 first task
+- [ ] PH01-T02 second task
+
+## Phase 2 — Build
+- [ ] PH02-T01 implement
+- [ ] PH02-T02 verify
+`
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(previousWD) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"prioritize", "-plan", filepath.Join(".agent", "PLAN.md"), "-updates", "PH01-T01=P0,PH02-T01=P1"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
+	}
+	for _, fragment := range []string{"\"tool\": \"prioritize_tasks\"", "PH01-T01", "PH02-T01"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected output to contain %s, got %s", fragment, stdout.String())
+		}
+	}
+}
+
+func TestParsePriorityUpdatesRejectsMalformedInput(t *testing.T) {
+	if _, err := parsePriorityUpdates("bad-value"); err == nil {
+		t.Fatal("expected malformed updates to fail")
+	}
+}
+
 func TestRunRejectsPlanPathOutsideWorkspace(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "PLAN.md")

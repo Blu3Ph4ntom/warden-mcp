@@ -255,13 +255,41 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id", "operation"]`
+- `required: ["operation"]`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string`
   - `operation: "add_phase" | "add_task" | "update_task_fields" | "move_task" | "split_task" | "reprioritize_task" | "add_dependency" | "remove_dependency" | "waive_task" | "cancel_task"`
   - `target_id?: string`
   - `payload?: object`
   - `reason?: string`
+
+### Supported payload shapes
+- `add_phase`
+  - `title: string`
+  - `after_phase_id?: string`
+  - `tasks?: { title: string, priority?: priority, depends_on?: string[], required?: boolean }[]`
+- `add_task`
+  - `phase_id?: string` or use `target_id` as the phase ID
+  - `title: string`
+  - `priority?: priority`
+  - `depends_on?: string[]`
+  - `required?: boolean`
+  - `after_task_id?: string`
+- `update_task_fields`
+  - `title?: string`
+  - `priority?: priority`
+  - `required?: boolean`
+- `move_task`
+  - `phase_id?: string`
+  - `after_task_id?: string`
+- `split_task`
+  - `tasks: { title: string, priority?: priority, depends_on?: string[], required?: boolean }[]`
+- `reprioritize_task`
+  - `priority: priority`
+- `add_dependency` / `remove_dependency`
+  - `depends_on: string`
+- `waive_task` / `cancel_task`
+  - use top-level `reason`
 
 ### Output `data`
 - `plan: PlanSummary`
@@ -287,9 +315,10 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id", "updates"]`
+- `required: ["updates"]`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string`
+  - `plan_path?: string`
   - `updates: array` of objects with:
     - `task_id: string`
     - `priority: priority`
@@ -361,9 +390,9 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id", "markdown_content"]`
+- `required: ["markdown_content"]`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string`
   - `markdown_content: string`
   - `mode?: "dry_run" | "apply"`
 
