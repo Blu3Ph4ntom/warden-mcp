@@ -79,10 +79,19 @@ If no metadata is needed, the task line remains the plain `- [ ] PH##-T## Descri
 
 ## Note and evidence blocks
 
-Optional task metadata blocks use nested bullets below the task entry:
+Optional task metadata blocks use indented section headers below the task entry:
 
 - `notes:` followed by compact JSON bullets representing `{ "actor_type", "text", "created_at" }`
 - `evidence:` followed by compact JSON bullets representing `{ "kind", "ref", "summary" }`
+
+Exact rendered shape:
+
+- task line metadata stays inline, for example `- [ ] PH01-T01 Description | priority:P1 | required:false`
+- note/evidence blocks render as:
+  - `  notes:`
+  - `    - {"actor_type":"agent","text":"captured note","created_at":"2026-03-07T00:00:00Z"}`
+  - `  evidence:`
+  - `    - {"kind":"log","ref":"build-log","summary":"smoke run output"}`
 
 These blocks are projections of canonical metadata and are never the sole source of truth, but they must round-trip without discarding audit fields.
 
