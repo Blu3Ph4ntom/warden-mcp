@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,4 +143,90 @@ completed_tasks: 0
 			t.Fatalf("expected output to contain %s, got %s", fragment, stdout.String())
 		}
 	}
+}
+
+func TestRunServeCommandHandlesInitializeAndStatusCall(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	content := `---
+plan_id: sample-plan
+title: Sample Plan
+version: 1.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Sample Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(previousWD) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdin := &bytes.Buffer{}
+	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": "2025-03-26", "clientInfo": map[string]any{"name": "test", "version": "1.0.0"}}})
+	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "get_status", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md")}}})
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := runWithIO([]string{"serve"}, stdin, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
+	}
+	frames := readFrames(t, stdout.Bytes())
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 MCP responses, got %d", len(frames))
+	}
+	if !strings.Contains(string(frames[0]), "initialize") && !strings.Contains(string(frames[0]), "protocolVersion") {
+		t.Fatalf("expected initialize response, got %s", frames[0])
+	}
+	if !strings.Contains(string(frames[1]), "sample-plan") || !strings.Contains(string(frames[1]), "get_status") {
+		t.Fatalf("expected status tool response, got %s", frames[1])
+	}
+}
+
+func writeFrame(t *testing.T, buffer *bytes.Buffer, payload map[string]any) {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if _, err := fmt.Fprintf(buffer, "Content-Length: %d\r\n\r\n%s", len(data), data); err != nil {
+		t.Fatalf("write frame failed: %v", err)
+	}
+}
+
+func readFrames(t *testing.T, data []byte) [][]byte {
+	t.Helper()
+	frames := make([][]byte, 0)
+	for len(data) > 0 {
+		sep := bytes.Index(data, []byte("\r\n\r\n"))
+		if sep < 0 {
+			t.Fatalf("missing frame separator in %q", data)
+		}
+		headers := string(data[:sep])
+		var length int
+		if _, err := fmt.Sscanf(headers, "Content-Length: %d", &length); err != nil {
+			t.Fatalf("parse headers failed: %v", err)
+		}
+		start := sep + 4
+		end := start + length
+		frames = append(frames, append([]byte(nil), data[start:end]...))
+		data = data[end:]
+	}
+	return frames
 }

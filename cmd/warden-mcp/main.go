@@ -8,11 +8,12 @@ import (
 	"os"
 	"time"
 
+	"warden-mcp/internal/api"
 	"warden-mcp/internal/domain"
 	"warden-mcp/internal/mcp/contracts"
-	"warden-mcp/internal/planfile"
+	"warden-mcp/internal/mcpserver"
+	"warden-mcp/internal/observe"
 	"warden-mcp/internal/security"
-	"warden-mcp/internal/service"
 )
 
 func main() {
@@ -20,6 +21,10 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWithIO(args, os.Stdin, stdout, stderr)
+}
+
+func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "usage: warden-mcp <status|next|finish> [-plan path]")
 		return 2
@@ -32,6 +37,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	actor := fs.String("actor", string(domain.ActorAgent), "actor type for finish requests")
 	taskID := fs.String("task", "", "task ID for update operations")
 	status := fs.String("status", "", "task status for update operations")
+	logEvents := fs.Bool("log-events", false, "emit structured events to stderr")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -39,31 +45,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return writeError(stdout, command, contracts.ErrInternal, err.Error())
 	}
-	resolvedPlanPath, err := security.ResolveWorkspacePath(workspaceRoot, *planPath, ".md")
-	if err != nil {
-		return writeError(stdout, command, contracts.ErrPlanInvalid, security.RedactSecretLikeText(err.Error()))
+	var recorder observe.Recorder
+	if *logEvents || os.Getenv("WARDEN_LOG_JSON") == "1" {
+		recorder = observe.NewJSONRecorder(stderr)
 	}
-	plan, warnings, err := planfile.Load(resolvedPlanPath)
-	if err != nil {
-		return writeError(stdout, command, contracts.ErrPlanNotFound, security.RedactSecretLikeText(err.Error()))
+	app := api.New(workspaceRoot, recorder)
+	if command == "serve" {
+		server := &mcpserver.Server{API: app, Recorder: recorder}
+		if err := server.Serve(stdin, stdout); err != nil {
+			return writeError(stdout, command, contracts.ErrInternal, security.RedactSecretLikeText(err.Error()))
+		}
+		return 0
 	}
 	switch command {
 	case "status":
-		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.GetStatusData]{OK: true, Tool: "get_status", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: service.GetStatus(plan, *includeTasks)})
+		return writeEnvelope(stdout, app.Status(*planPath, *includeTasks))
 	case "next":
-		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.GetNextTaskData]{OK: true, Tool: "get_next_task", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: service.GetNextTask(plan, contracts.GetNextTaskRequest{PlanID: plan.PlanID, RespectPhaseOrder: true, RespectDependencies: true})})
+		return writeEnvelope(stdout, app.Next(*planPath, contracts.GetNextTaskRequest{RespectPhaseOrder: true, RespectDependencies: true}))
 	case "finish":
-		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.RequestFinishData]{OK: true, Tool: "request_finish", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: service.RequestFinish(plan, contracts.RequestFinishRequest{PlanID: plan.PlanID, ActorType: domain.ActorType(*actor)})})
+		return writeEnvelope(stdout, app.Finish(*planPath, contracts.RequestFinishRequest{ActorType: domain.ActorType(*actor)}))
 	case "update":
-		if *taskID == "" || *status == "" {
-			return writeError(stdout, command, contracts.ErrTaskNotFound, "update requires -task and -status")
-		}
-		data, updateWarnings, err := service.UpdateTask(resolvedPlanPath, contracts.UpdateTaskRequest{PlanID: plan.PlanID, TaskID: *taskID, Status: domain.TaskStatus(*status), ActorType: domain.ActorType(*actor)})
-		if err != nil {
-			return writeError(stdout, command, contracts.ErrTaskTransitionInvalid, security.RedactSecretLikeText(err.Error()))
-		}
-		warnings = append(warnings, updateWarnings...)
-		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.UpdateTaskData]{OK: true, Tool: "update_task", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: data})
+		return writeEnvelope(stdout, app.Update(*planPath, contracts.UpdateTaskRequest{TaskID: *taskID, Status: domain.TaskStatus(*status), ActorType: domain.ActorType(*actor)}))
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n", command)
 		return 2
@@ -71,7 +73,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func writeError(stdout io.Writer, tool, code, message string) int {
-	envelope := contracts.ToolResponseEnvelope[struct{}]{OK: false, Tool: tool, Timestamp: timestamp(), Warnings: []domain.ValidationIssue{}, Error: &contracts.ErrorObject{Code: code, Message: message, Retryable: false, Details: map[string]any{}}, Data: struct{}{}}
+	envelope := contracts.ToolResponseEnvelope[struct{}]{OK: false, Tool: tool, Timestamp: apiTimestamp(), Warnings: []domain.ValidationIssue{}, Error: &contracts.ErrorObject{Code: code, Message: message, Retryable: false, Details: map[string]any{}}, Data: struct{}{}}
 	return writeEnvelope(stdout, envelope)
 }
 
@@ -84,6 +86,6 @@ func writeEnvelope[T any](stdout io.Writer, envelope contracts.ToolResponseEnvel
 	return 0
 }
 
-func timestamp() string {
+func apiTimestamp() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
