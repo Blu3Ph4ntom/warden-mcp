@@ -19,6 +19,7 @@ import (
 
 const ProtocolVersion = "2025-11-25"
 const AgentGuideVersion = "2026-03-07"
+const ServerVersion = "0.1.3"
 
 var supportedProtocolVersions = []string{
 	"2024-11-05",
@@ -116,7 +117,7 @@ func (s *Server) handle(req request) *response {
 		_ = json.Unmarshal(req.Params, &params)
 		s.protocol = negotiateProtocolVersion(params.ProtocolVersion)
 		s.negotiated = true
-		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": s.protocol, "capabilities": serverCapabilities(), "serverInfo": map[string]any{"name": "warden-mcp", "version": "0.1.0"}, "instructions": "Use Warden tools to inspect and update the active plan safely."}}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": s.protocol, "capabilities": serverCapabilities(), "serverInfo": map[string]any{"name": "warden-mcp", "version": ServerVersion}, "instructions": "Use Warden tools to inspect and update the active plan safely."}}
 	case "notifications/initialized":
 		s.initialized = true
 		s.record(observe.Event{Kind: "mcp", Method: req.Method, Accepted: observe.Accepted(true), Message: "client initialized"})
