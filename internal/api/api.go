@@ -34,6 +34,38 @@ func (a API) Status(planPath string, includeTasks bool) contracts.ToolResponseEn
 	return contracts.ToolResponseEnvelope[contracts.GetStatusData]{OK: true, Tool: "get_status", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 }
 
+func (a API) Health(planPath string) contracts.ToolResponseEnvelope[contracts.HealthCheckData] {
+	start := a.now()
+	checks := make([]contracts.HealthCheck, 0, 3)
+	status := "ok"
+	checks = append(checks, contracts.HealthCheck{Name: "workspace_root", Status: "ok", Message: "workspace root available"})
+	resolved, err := security.ResolveWorkspacePath(a.WorkspaceRoot, planPath, ".md")
+	if err != nil {
+		status = combineHealthStatus(status, "failing")
+		checks = append(checks, contracts.HealthCheck{Name: "plan_path", Status: "failing", Message: security.RedactSecretLikeText(err.Error())})
+		data := contracts.HealthCheckData{Status: status, Checks: checks, CheckedAt: timestamp(a.now())}
+		a.record(observe.Event{Kind: "command", Command: "health", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: "health check failed", ErrorCode: contracts.ErrPlanInvalid})
+		return contracts.ToolResponseEnvelope[contracts.HealthCheckData]{OK: true, Tool: "health_check", Timestamp: timestamp(a.now()), Data: data}
+	}
+	checks = append(checks, contracts.HealthCheck{Name: "plan_path", Status: "ok", Message: "plan path resolved inside workspace"})
+	plan, warnings, err := planfile.Load(resolved)
+	if err != nil {
+		checkStatus := "degraded"
+		if errors.Is(err, planfile.ErrPlanTooLarge) || errors.Is(err, planfile.ErrPlanTooManyLines) {
+			checkStatus = "failing"
+		}
+		status = combineHealthStatus(status, checkStatus)
+		checks = append(checks, contracts.HealthCheck{Name: "plan_load", Status: checkStatus, Message: security.RedactSecretLikeText(err.Error())})
+		data := contracts.HealthCheckData{Status: status, Checks: checks, CheckedAt: timestamp(a.now())}
+		a.record(observe.Event{Kind: "command", Command: "health", Accepted: observe.Accepted(checkStatus == "ok"), DurationMS: observe.Since(start), Message: "health check completed", ErrorCode: contracts.ErrPlanInvalid})
+		return contracts.ToolResponseEnvelope[contracts.HealthCheckData]{OK: true, Tool: "health_check", Timestamp: timestamp(a.now()), Warnings: warnings, Data: data}
+	}
+	checks = append(checks, contracts.HealthCheck{Name: "plan_load", Status: "ok", Message: "plan parsed successfully"})
+	data := contracts.HealthCheckData{Status: status, PlanID: plan.PlanID, Checks: checks, CheckedAt: timestamp(a.now())}
+	a.record(observe.Event{Kind: "command", Command: "health", PlanID: plan.PlanID, Accepted: observe.Accepted(true), DurationMS: observe.Since(start), Message: "health check completed"})
+	return contracts.ToolResponseEnvelope[contracts.HealthCheckData]{OK: true, Tool: "health_check", Timestamp: timestamp(a.now()), Warnings: warnings, Data: data}
+}
+
 func (a API) Next(planPath string, req contracts.GetNextTaskRequest) contracts.ToolResponseEnvelope[contracts.GetNextTaskData] {
 	start := a.now()
 	resolved, plan, warnings, errObj := a.loadPlan(planPath)
@@ -138,6 +170,14 @@ func valueOrEmpty(task *contracts.TaskSummary) string {
 		return ""
 	}
 	return task.TaskID
+}
+
+func combineHealthStatus(current, next string) string {
+	rank := map[string]int{"ok": 0, "degraded": 1, "failing": 2}
+	if rank[next] > rank[current] {
+		return next
+	}
+	return current
 }
 
 func dedupeWarnings(warnings []domain.ValidationIssue) []domain.ValidationIssue {

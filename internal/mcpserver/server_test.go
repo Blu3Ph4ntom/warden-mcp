@@ -45,21 +45,25 @@ completed_tasks: 2
 	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": ProtocolVersion, "clientInfo": map[string]any{"name": "test", "version": "1.0.0"}}})
 	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": map[string]any{"name": "get_status", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md"), "include_tasks": true}}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": map[string]any{"name": "health_check", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md")}}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": map[string]any{"name": "get_status", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md"), "include_tasks": true}}})
 	output := &bytes.Buffer{}
 	server := &Server{API: api.New(root, nil)}
 	if err := server.Serve(input, output); err != nil {
 		t.Fatalf("serve failed: %v", err)
 	}
 	frames := readTestFrames(t, output.Bytes())
-	if len(frames) != 3 {
-		t.Fatalf("expected 3 responses, got %d", len(frames))
+	if len(frames) != 4 {
+		t.Fatalf("expected 4 responses, got %d", len(frames))
 	}
-	if !strings.Contains(string(frames[1]), "\"tools\"") || !strings.Contains(string(frames[1]), "get_status") {
+	if !strings.Contains(string(frames[1]), "\"tools\"") || !strings.Contains(string(frames[1]), "health_check") {
 		t.Fatalf("expected tools/list payload, got %s", frames[1])
 	}
-	if !strings.Contains(string(frames[2]), "sample-plan") || !strings.Contains(string(frames[2]), "get_status") {
-		t.Fatalf("expected status tool response, got %s", frames[2])
+	if !strings.Contains(string(frames[2]), "health_check") || !strings.Contains(string(frames[2]), "plan parsed successfully") {
+		t.Fatalf("expected health tool response, got %s", frames[2])
+	}
+	if !strings.Contains(string(frames[3]), "sample-plan") || !strings.Contains(string(frames[3]), "get_status") {
+		t.Fatalf("expected status tool response, got %s", frames[3])
 	}
 }
 
