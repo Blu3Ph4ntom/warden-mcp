@@ -106,6 +106,51 @@ completed_tasks: 0
 	}
 }
 
+func TestRunExportCommandEmitsJSONExportEnvelope(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	content := `---
+plan_id: sample-plan
+title: Sample Plan
+version: 1.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Sample Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(previousWD) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"export", "-plan", filepath.Join(".agent", "PLAN.md"), "-format", "json"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
+	}
+	for _, fragment := range []string{"\"tool\": \"export_plan\"", "\"format\": \"json\"", "sample-plan"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected output to contain %s, got %s", fragment, stdout.String())
+		}
+	}
+}
+
 func TestRunRejectsPlanPathOutsideWorkspace(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "PLAN.md")

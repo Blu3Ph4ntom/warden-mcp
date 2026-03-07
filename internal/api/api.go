@@ -1,7 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"time"
 
 	"warden-mcp/internal/domain"
@@ -64,6 +67,35 @@ func (a API) Health(planPath string) contracts.ToolResponseEnvelope[contracts.He
 	data := contracts.HealthCheckData{Status: status, PlanID: plan.PlanID, Checks: checks, CheckedAt: timestamp(a.now())}
 	a.record(observe.Event{Kind: "command", Command: "health", PlanID: plan.PlanID, Accepted: observe.Accepted(true), DurationMS: observe.Since(start), Message: "health check completed"})
 	return contracts.ToolResponseEnvelope[contracts.HealthCheckData]{OK: true, Tool: "health_check", Timestamp: timestamp(a.now()), Warnings: warnings, Data: data}
+}
+
+func (a API) Export(planPath string, req contracts.ExportPlanRequest, outputPath string) contracts.ToolResponseEnvelope[contracts.ExportPlanData] {
+	start := a.now()
+	resolved, plan, warnings, errObj := a.loadPlan(planPath)
+	if errObj != nil {
+		a.record(observe.Event{Kind: "command", Command: "export", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
+		return contracts.ToolResponseEnvelope[contracts.ExportPlanData]{OK: false, Tool: "export_plan", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
+	}
+	format := req.Format
+	if format == "" {
+		format = contracts.ExportMarkdown
+	}
+	content, errObj := buildExportContent(resolved, plan, format)
+	if errObj != nil {
+		a.record(observe.Event{Kind: "command", Command: "export", PlanID: plan.PlanID, Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
+		return contracts.ToolResponseEnvelope[contracts.ExportPlanData]{OK: false, Tool: "export_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	contentPath := ""
+	if outputPath != "" {
+		contentPath, errObj = a.writeExport(content, format, outputPath)
+		if errObj != nil {
+			a.record(observe.Event{Kind: "command", Command: "export", PlanID: plan.PlanID, Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
+			return contracts.ToolResponseEnvelope[contracts.ExportPlanData]{OK: false, Tool: "export_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+		}
+	}
+	data := contracts.ExportPlanData{Format: format, Content: content, ContentPath: contentPath}
+	a.record(observe.Event{Kind: "command", Command: "export", PlanID: plan.PlanID, Accepted: observe.Accepted(true), DurationMS: observe.Since(start), Message: "plan exported", Fields: map[string]any{"format": format, "content_path": contentPath}})
+	return contracts.ToolResponseEnvelope[contracts.ExportPlanData]{OK: true, Tool: "export_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 }
 
 func (a API) Next(planPath string, req contracts.GetNextTaskRequest) contracts.ToolResponseEnvelope[contracts.GetNextTaskData] {
@@ -178,6 +210,43 @@ func combineHealthStatus(current, next string) string {
 		return next
 	}
 	return current
+}
+
+func buildExportContent(resolvedPlanPath string, plan domain.Plan, format contracts.ExportFormat) (string, *contracts.ErrorObject) {
+	switch format {
+	case contracts.ExportMarkdown:
+		content, err := os.ReadFile(resolvedPlanPath)
+		if err != nil {
+			return "", errorObject(contracts.ErrExportFailed, err.Error())
+		}
+		return string(content), nil
+	case contracts.ExportJSON:
+		content, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			return "", errorObject(contracts.ErrExportFailed, err.Error())
+		}
+		return string(content), nil
+	default:
+		return "", errorObject(contracts.ErrExportFailed, "unsupported export format")
+	}
+}
+
+func (a API) writeExport(content string, format contracts.ExportFormat, outputPath string) (string, *contracts.ErrorObject) {
+	exts := []string{".md", ".json", ".txt"}
+	if format == contracts.ExportJSON {
+		exts = []string{".json", ".txt"}
+	}
+	resolved, err := security.ResolveWorkspacePath(a.WorkspaceRoot, outputPath, exts...)
+	if err != nil {
+		return "", errorObject(contracts.ErrExportFailed, err.Error())
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
+		return "", errorObject(contracts.ErrExportFailed, err.Error())
+	}
+	if err := os.WriteFile(resolved, []byte(content), 0o644); err != nil {
+		return "", errorObject(contracts.ErrExportFailed, err.Error())
+	}
+	return resolved, nil
 }
 
 func dedupeWarnings(warnings []domain.ValidationIssue) []domain.ValidationIssue {

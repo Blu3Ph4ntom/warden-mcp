@@ -26,7 +26,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: warden-mcp <status|next|finish|update|health|serve> [-plan path]")
+		fmt.Fprintln(stderr, "usage: warden-mcp <status|next|finish|update|health|export|serve> [-plan path]")
 		return 2
 	}
 	command := args[0]
@@ -37,6 +37,8 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	actor := fs.String("actor", string(domain.ActorAgent), "actor type for finish requests")
 	taskID := fs.String("task", "", "task ID for update operations")
 	status := fs.String("status", "", "task status for update operations")
+	format := fs.String("format", string(contracts.ExportMarkdown), "export format")
+	writePath := fs.String("write", "", "optional workspace-relative export output path")
 	logEvents := fs.Bool("log-events", false, "emit structured events to stderr")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
@@ -58,6 +60,8 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	switch command {
+	case "export":
+		return writeEnvelope(stdout, app.Export(*planPath, contracts.ExportPlanRequest{Format: contracts.ExportFormat(*format)}, *writePath))
 	case "health":
 		return writeEnvelope(stdout, app.Health(*planPath))
 	case "status":

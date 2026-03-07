@@ -160,6 +160,18 @@ func (s *Server) callTool(params toolsCallParams) (map[string]any, bool) {
 		}
 		env := s.API.Health(planPath)
 		return toolResult(env), true
+	case "export_plan":
+		var args struct {
+			PlanPath string                 `json:"plan_path,omitempty"`
+			PlanID   string                 `json:"plan_id,omitempty"`
+			Format   contracts.ExportFormat `json:"format,omitempty"`
+		}
+		_ = json.Unmarshal(params.Arguments, &args)
+		if args.PlanPath != "" {
+			planPath = args.PlanPath
+		}
+		env := s.API.Export(planPath, contracts.ExportPlanRequest{PlanID: args.PlanID, Format: args.Format}, "")
+		return toolResult(env), true
 	case "get_next_task":
 		var args struct {
 			PlanPath            string          `json:"plan_path,omitempty"`
@@ -224,6 +236,7 @@ func (s *Server) record(event observe.Event) {
 func toolDefinitions() []map[string]any {
 	return []map[string]any{
 		{"name": "health_check", "description": "Run basic workspace and plan readiness checks.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown.")})},
+		{"name": "export_plan", "description": "Export the active plan as markdown or JSON.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "format": stringSchema("Optional export format: markdown or json.")})},
 		{"name": "get_status", "description": "Return the active plan status and optional task list.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "include_tasks": boolSchema("Include summarized tasks in the response.")})},
 		{"name": "get_next_task", "description": "Return the next recommended task under current phase-order rules.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "respect_phase_order": boolSchema("Prefer current phase ordering."), "respect_dependencies": boolSchema("Respect task dependency edges."), "priority_bias": stringSchema("Optional priority bias such as p1.")})},
 		{"name": "request_finish", "description": "Evaluate whether the active plan can finish and explain blocking work.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "actor_type": stringSchema("Actor type requesting finish."), "summary": stringSchema("Optional operator summary.")})},
