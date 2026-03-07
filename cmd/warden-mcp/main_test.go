@@ -85,3 +85,60 @@ func TestRunRejectsPlanPathOutsideWorkspace(t *testing.T) {
 		t.Fatalf("expected plan path denial, got %s", stdout.String())
 	}
 }
+
+func TestRunUpdateCommandMutatesPlanFile(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	content := `---
+plan_id: sample-plan
+title: Sample Plan
+version: 1.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Sample Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(previousWD)
+	}()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"update", "-plan", filepath.Join(".agent", "PLAN.md"), "-task", "PH01-T01", "-status", "in_progress"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
+	}
+	updatedContent, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	for _, fragment := range []string{"\"tool\": \"update_task\"", "- [/] PH01-T01 create repo"} {
+		if fragment == "- [/] PH01-T01 create repo" {
+			if !strings.Contains(string(updatedContent), fragment) {
+				t.Fatalf("expected updated file to contain %s, got %s", fragment, string(updatedContent))
+			}
+			continue
+		}
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected output to contain %s, got %s", fragment, stdout.String())
+		}
+	}
+}

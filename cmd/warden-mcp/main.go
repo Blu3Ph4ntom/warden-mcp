@@ -30,6 +30,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	planPath := fs.String("plan", ".agent/PLAN.md", "path to plan markdown")
 	includeTasks := fs.Bool("include-tasks", false, "include tasks in status output")
 	actor := fs.String("actor", string(domain.ActorAgent), "actor type for finish requests")
+	taskID := fs.String("task", "", "task ID for update operations")
+	status := fs.String("status", "", "task status for update operations")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -52,6 +54,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.GetNextTaskData]{OK: true, Tool: "get_next_task", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: service.GetNextTask(plan, contracts.GetNextTaskRequest{PlanID: plan.PlanID, RespectPhaseOrder: true, RespectDependencies: true})})
 	case "finish":
 		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.RequestFinishData]{OK: true, Tool: "request_finish", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: service.RequestFinish(plan, contracts.RequestFinishRequest{PlanID: plan.PlanID, ActorType: domain.ActorType(*actor)})})
+	case "update":
+		if *taskID == "" || *status == "" {
+			return writeError(stdout, command, contracts.ErrTaskNotFound, "update requires -task and -status")
+		}
+		data, updateWarnings, err := service.UpdateTask(resolvedPlanPath, contracts.UpdateTaskRequest{PlanID: plan.PlanID, TaskID: *taskID, Status: domain.TaskStatus(*status), ActorType: domain.ActorType(*actor)})
+		if err != nil {
+			return writeError(stdout, command, contracts.ErrTaskTransitionInvalid, security.RedactSecretLikeText(err.Error()))
+		}
+		warnings = append(warnings, updateWarnings...)
+		return writeEnvelope(stdout, contracts.ToolResponseEnvelope[contracts.UpdateTaskData]{OK: true, Tool: "update_task", Timestamp: timestamp(), PlanID: plan.PlanID, Warnings: warnings, Data: data})
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n", command)
 		return 2
