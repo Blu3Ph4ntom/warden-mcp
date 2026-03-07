@@ -26,7 +26,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: warden-mcp <status|next|finish|update|health|export|serve> [-plan path]")
+		fmt.Fprintln(stderr, "usage: warden-mcp <status|next|finish|update|health|export|validate|serve> [-plan path]")
 		return 2
 	}
 	command := args[0]
@@ -60,6 +60,8 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	switch command {
+	case "validate":
+		return writeEnvelope(stdout, app.Validate(*planPath, contracts.ValidatePlanRequest{}))
 	case "export":
 		return writeEnvelope(stdout, app.Export(*planPath, contracts.ExportPlanRequest{Format: contracts.ExportFormat(*format)}, *writePath))
 	case "health":

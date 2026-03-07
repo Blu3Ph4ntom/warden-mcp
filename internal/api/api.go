@@ -98,6 +98,20 @@ func (a API) Export(planPath string, req contracts.ExportPlanRequest, outputPath
 	return contracts.ToolResponseEnvelope[contracts.ExportPlanData]{OK: true, Tool: "export_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 }
 
+func (a API) Validate(planPath string, req contracts.ValidatePlanRequest) contracts.ToolResponseEnvelope[contracts.ValidatePlanData] {
+	start := a.now()
+	resolved, plan, warnings, errObj := a.loadPlan(planPath)
+	if errObj != nil {
+		a.record(observe.Event{Kind: "command", Command: "validate", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
+		return contracts.ToolResponseEnvelope[contracts.ValidatePlanData]{OK: false, Tool: "validate_plan", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
+	}
+	issues := append([]domain.ValidationIssue{}, warnings...)
+	issues = append(issues, plan.Validate()...)
+	data := contracts.ValidatePlanData{Valid: !hasErrorIssues(issues), Issues: issues, NormalizedCounts: contracts.NormalizedCounts{PhaseCount: len(plan.Phases), TaskCount: plan.TotalTasks()}}
+	a.record(observe.Event{Kind: "command", Command: "validate", PlanID: plan.PlanID, Accepted: observe.Accepted(data.Valid), DurationMS: observe.Since(start), Message: "plan validated", Fields: map[string]any{"plan_path": resolved, "mode": req.Mode}})
+	return contracts.ToolResponseEnvelope[contracts.ValidatePlanData]{OK: true, Tool: "validate_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
+}
+
 func (a API) Next(planPath string, req contracts.GetNextTaskRequest) contracts.ToolResponseEnvelope[contracts.GetNextTaskData] {
 	start := a.now()
 	resolved, plan, warnings, errObj := a.loadPlan(planPath)
@@ -264,4 +278,13 @@ func dedupeWarnings(warnings []domain.ValidationIssue) []domain.ValidationIssue 
 		result = append(result, warning)
 	}
 	return result
+}
+
+func hasErrorIssues(issues []domain.ValidationIssue) bool {
+	for _, issue := range issues {
+		if issue.Severity == "error" {
+			return true
+		}
+	}
+	return false
 }

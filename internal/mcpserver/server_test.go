@@ -109,6 +109,48 @@ completed_tasks: 0
 	}
 }
 
+func TestServerHandlesValidateToolCall(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `---
+plan_id: validate-plan
+title: Validate Plan
+version: 1.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Validate Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	input := bytes.NewBuffer(nil)
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": ProtocolVersion}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "validate_plan", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md")}}})
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(root, nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	frames := readTestFrames(t, output.Bytes())
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(frames))
+	}
+	if !strings.Contains(string(frames[1]), "validate_plan") || !strings.Contains(string(frames[1]), "PLAN_TOO_SHALLOW") {
+		t.Fatalf("expected validate tool response, got %s", frames[1])
+	}
+}
+
 func writeTestFrame(t *testing.T, buffer *bytes.Buffer, payload map[string]any) {
 	t.Helper()
 	data, err := json.Marshal(payload)
