@@ -367,6 +367,14 @@ completed_tasks: 0
 }
 
 func TestRunServeCommandHandlesInitializeAndStatusCall(t *testing.T) {
+	testRunServeLikeCommandHandlesInitializeAndStatusCall(t, []string{"serve"})
+}
+
+func TestRunWithoutArgsDefaultsToServeAndHandlesStatusCall(t *testing.T) {
+	testRunServeLikeCommandHandlesInitializeAndStatusCall(t, []string{})
+}
+
+func testRunServeLikeCommandHandlesInitializeAndStatusCall(t *testing.T, args []string) {
 	root := t.TempDir()
 	planPath := filepath.Join(root, ".agent", "PLAN.md")
 	content := `---
@@ -404,7 +412,7 @@ completed_tasks: 0
 	writeFrame(t, stdin, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "get_status", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md")}}})
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	code := runWithIO([]string{"serve"}, stdin, stdout, stderr)
+	code := runWithIO(args, stdin, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
 	}

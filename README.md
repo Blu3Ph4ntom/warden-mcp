@@ -48,6 +48,8 @@ Warden speaks MCP over **stdio**, so most local MCP clients can launch it with a
 { "command": "warden-mcp", "args": [] }
 ```
 
+When launched with no CLI args, `warden-mcp` now defaults to MCP server (`serve`) mode so local MCP clients can invoke the command directly.
+
 ## Tool surface
 
 The current public MCP tools are:

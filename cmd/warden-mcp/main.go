@@ -27,8 +27,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: warden-mcp <status|next|finish|update|reset|prioritize|reconcile|edit|health|export|validate|serve> [-plan path]")
-		return 2
+		args = []string{"serve"}
 	}
 	command := args[0]
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
