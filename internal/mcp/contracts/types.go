@@ -3,7 +3,7 @@ package contracts
 import (
 	"encoding/json"
 
-	"warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
 )
 
 type ExportFormat string

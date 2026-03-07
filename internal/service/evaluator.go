@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"warden-mcp/internal/domain"
-	"warden-mcp/internal/mcp/contracts"
-	"warden-mcp/internal/planfile"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcp/contracts"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/planfile"
 )
 
 func GetStatus(plan domain.Plan, includeTasks bool) contracts.GetStatusData {

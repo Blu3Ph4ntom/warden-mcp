@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"warden-mcp/internal/domain"
-	"warden-mcp/internal/fsutil"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/fsutil"
 )
 
 func WritePlanFile(path string, plan domain.Plan) (domain.Plan, []domain.ValidationIssue, error) {

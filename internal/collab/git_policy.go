@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
 )
 
 type GitRequirement string

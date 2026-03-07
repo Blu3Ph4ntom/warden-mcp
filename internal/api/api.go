@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"warden-mcp/internal/domain"
-	"warden-mcp/internal/fsutil"
-	"warden-mcp/internal/mcp/contracts"
-	"warden-mcp/internal/observe"
-	"warden-mcp/internal/planfile"
-	"warden-mcp/internal/security"
-	"warden-mcp/internal/service"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/fsutil"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcp/contracts"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/observe"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/planfile"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/security"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/service"
 )
 
 type API struct {

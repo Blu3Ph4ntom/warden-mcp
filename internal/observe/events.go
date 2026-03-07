@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"warden-mcp/internal/security"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/security"
 )
 
 type Event struct {

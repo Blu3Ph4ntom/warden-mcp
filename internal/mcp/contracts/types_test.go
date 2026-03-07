@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
 )
 
 func TestRequestFinishEnvelopeMarshalsCanonicalFields(t *testing.T) {

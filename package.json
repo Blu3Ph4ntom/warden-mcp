@@ -1,0 +1,38 @@
+{
+  "name": "warden-mcp",
+  "version": "0.1.0",
+  "description": "Thin npm launcher for the native Warden MCP Go server",
+  "bin": {
+    "warden-mcp": "./npm/warden-mcp.js"
+  },
+  "files": [
+    "npm/warden-mcp.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/npm-wrapper.test.mjs",
+    "pack:check": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blu3Ph4ntom/warden-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Blu3Ph4ntom/warden-mcp/issues"
+  },
+  "homepage": "https://github.com/Blu3Ph4ntom/warden-mcp#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "planning",
+    "governance"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "UNLICENSED"
+}

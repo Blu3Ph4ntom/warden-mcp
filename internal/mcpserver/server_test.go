@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"warden-mcp/internal/api"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/api"
 )
 
 func TestServerHandlesInitializeListAndStatusToolCall(t *testing.T) {

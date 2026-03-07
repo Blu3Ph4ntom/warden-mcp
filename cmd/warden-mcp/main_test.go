@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"warden-mcp/internal/mcp/contracts"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcp/contracts"
 )
 
 func TestRunStatusCommandEmitsStatusEnvelope(t *testing.T) {

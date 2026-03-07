@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"warden-mcp/internal/mcp/contracts"
-	"warden-mcp/internal/planfile"
-	"warden-mcp/internal/service"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcp/contracts"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/planfile"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/service"
 )
 
 func BenchmarkParsePlan100Tasks(b *testing.B) {

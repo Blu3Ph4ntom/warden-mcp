@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
 )
 
 func Render(plan domain.Plan) string {

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"warden-mcp/internal/domain"
-	"warden-mcp/internal/mcp/contracts"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcp/contracts"
 )
 
 func TestGetNextTaskReturnsFirstOpenTaskInPhaseOrder(t *testing.T) {

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"warden-mcp/internal/api"
-	"warden-mcp/internal/domain"
-	"warden-mcp/internal/mcp/contracts"
-	"warden-mcp/internal/mcpserver"
-	"warden-mcp/internal/observe"
-	"warden-mcp/internal/security"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/api"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcp/contracts"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/mcpserver"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/observe"
+	"github.com/Blu3Ph4ntom/warden-mcp/internal/security"
 )
 
 func main() {
