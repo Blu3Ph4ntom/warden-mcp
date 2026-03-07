@@ -344,10 +344,11 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id", "format"]`
+- `required: []`
 - `properties:`
-  - `plan_id: string`
-  - `format: export_format`
+  - `plan_id?: string`
+  - `plan_path?: string`
+  - `format?: export_format`
   - `include_audit_summary?: boolean`
 
 ### Output `data`
