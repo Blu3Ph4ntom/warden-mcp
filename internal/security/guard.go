@@ -33,6 +33,14 @@ func ResolveProcessWorkspaceRoot() (WorkspaceRootResolution, error) {
 	return resolveProcessWorkspaceRoot(os.Getenv, os.Getwd, os.UserHomeDir)
 }
 
+func IsUnsafeWorkspaceRootPath(root string) bool {
+	resolved, err := normalizeWorkspaceRoot(root)
+	if err != nil {
+		return true
+	}
+	return isUnsafeWorkspaceRoot(resolved, os.Getenv)
+}
+
 func ResolveWorkspacePath(workspaceRoot, requestedPath string, allowedExts ...string) (string, error) {
 	if strings.TrimSpace(workspaceRoot) == "" {
 		return "", fmt.Errorf("workspace root is required")

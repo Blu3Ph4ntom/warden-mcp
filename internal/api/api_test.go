@@ -171,3 +171,67 @@ completed_tasks: 4
 		t.Fatalf("expected archived json export to exist: %v", err)
 	}
 }
+
+func TestStatusIgnoresUnsafeAbsoluteDefaultPlanPath(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `---
+plan_id: fallback-plan
+title: Fallback Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+---
+
+# Fallback Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan failed: %v", err)
+	}
+	base := t.TempDir()
+	windir := filepath.Join(base, "Windows")
+	t.Setenv("WINDIR", windir)
+	app := New(root, nil)
+	envelope := app.Status(filepath.Join(windir, "System32", ".agent", "PLAN.md"), contracts.GetStatusRequest{})
+	if !envelope.OK || envelope.Data.Plan.PlanID != "fallback-plan" {
+		t.Fatalf("expected status to use workspace default plan, got %+v", envelope)
+	}
+}
+
+func TestHealthIgnoresUnsafeAbsoluteDefaultPlanPath(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `---
+plan_id: fallback-plan
+title: Fallback Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+---
+
+# Fallback Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan failed: %v", err)
+	}
+	base := t.TempDir()
+	windir := filepath.Join(base, "Windows")
+	t.Setenv("WINDIR", windir)
+	app := New(root, nil)
+	envelope := app.Health(filepath.Join(windir, "System32", ".agent", "PLAN.md"))
+	if !envelope.OK || envelope.Data.PlanID != "fallback-plan" {
+		t.Fatalf("expected health to use workspace default plan, got %+v", envelope)
+	}
+}

@@ -75,6 +75,8 @@ By default, repository plans typically live at `.agent/PLAN.md`.
 
 If `warden-mcp` is launched from an unsafe OS directory such as Windows `System32`, it will refuse to treat that location as the workspace and will fall back to `~/.warden-mcp/workspaces/default/.agent/PLAN.md` instead. If your MCP client supports environment variables, set `WARDEN_WORKSPACE_ROOT` to your project root to keep plans stored inside the repo.
 
+If an MCP client sends a bogus absolute default plan path expanded from an unsafe OS directory, such as `C:\\Windows\\System32\\.agent\\PLAN.md`, Warden will ignore that unsafe absolute default and resolve the active workspace plan path instead.
+
 ## MCP client setup examples
 
 ### Claude Code (`.mcp.json`)

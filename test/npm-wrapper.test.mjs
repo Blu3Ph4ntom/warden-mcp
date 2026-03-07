@@ -32,7 +32,7 @@ function runNode(scriptPath, env) {
 }
 
 test('downloads and verifies the native binary during install', async () => {
-  const version = '0.1.4-test';
+  const version = '0.1.5-test';
   const installDir = mkdtempSync(path.join(tmpdir(), 'warden-mcp-install-'));
   const asset = native.assetName(version);
   const manifest = path.join(installDir, 'manifest.json');
@@ -57,11 +57,11 @@ test('downloads and verifies the native binary during install', async () => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(fs.readFileSync(path.join(installDir, native.binaryName())), binary);
-  assert.match(fs.readFileSync(manifest, 'utf8'), /0\.1\.4-test/);
+  assert.match(fs.readFileSync(manifest, 'utf8'), /0\.1\.5-test/);
 });
 
 test('fails install when checksum validation fails', async () => {
-  const version = '0.1.4-bad';
+  const version = '0.1.5-bad';
   const installDir = mkdtempSync(path.join(tmpdir(), 'warden-mcp-bad-'));
   const asset = native.assetName(version);
   const server = http.createServer((request, response) => {
@@ -88,7 +88,7 @@ test('fails install when checksum validation fails', async () => {
 test('prints guidance when the npm-installed binary is missing', () => {
   const installDir = mkdtempSync(path.join(tmpdir(), 'warden-mcp-missing-'));
   const result = spawnSync(process.execPath, [wrapperPath, '--help'], {
-    env: { ...process.env, WARDEN_MCP_INSTALL_DIR: installDir, WARDEN_MCP_VERSION: '0.1.4' },
+    env: { ...process.env, WARDEN_MCP_INSTALL_DIR: installDir, WARDEN_MCP_VERSION: '0.1.5' },
     encoding: 'utf8',
   });
 

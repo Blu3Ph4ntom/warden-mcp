@@ -215,7 +215,7 @@ func (a API) Health(planPath string) contracts.ToolResponseEnvelope[contracts.He
 	checks := make([]contracts.HealthCheck, 0, 3)
 	status := "ok"
 	checks = append(checks, contracts.HealthCheck{Name: "workspace_root", Status: "ok", Message: "workspace root available"})
-	resolved, err := security.ResolveWorkspacePath(a.WorkspaceRoot, planPath, ".md")
+	resolved, err := security.ResolveWorkspacePath(a.WorkspaceRoot, a.normalizePlanPath(planPath), ".md")
 	if err != nil {
 		status = combineHealthStatus(status, "failing")
 		checks = append(checks, contracts.HealthCheck{Name: "plan_path", Status: "failing", Message: security.RedactSecretLikeText(err.Error())})
@@ -447,7 +447,7 @@ func (a API) Edit(planPath string, req contracts.EditPlanRequest) contracts.Tool
 }
 
 func (a API) loadPlan(planPath string) (string, domain.Plan, []domain.ValidationIssue, *contracts.ErrorObject) {
-	resolved, err := security.ResolveWorkspacePath(a.WorkspaceRoot, planPath, ".md")
+	resolved, err := security.ResolveWorkspacePath(a.WorkspaceRoot, a.normalizePlanPath(planPath), ".md")
 	if err != nil {
 		return "", domain.Plan{}, nil, errorObject(contracts.ErrPlanInvalid, err.Error())
 	}
@@ -459,6 +459,27 @@ func (a API) loadPlan(planPath string) (string, domain.Plan, []domain.Validation
 		return resolved, domain.Plan{}, warnings, errorObject(contracts.ErrPlanNotFound, err.Error())
 	}
 	return resolved, plan, warnings, nil
+}
+
+func (a API) normalizePlanPath(planPath string) string {
+	trimmed := strings.TrimSpace(planPath)
+	if trimmed == "" {
+		return defaultPlanPath()
+	}
+	if !filepath.IsAbs(trimmed) {
+		return trimmed
+	}
+	cleaned := filepath.Clean(trimmed)
+	if !strings.EqualFold(filepath.Base(cleaned), "PLAN.md") {
+		return trimmed
+	}
+	if !strings.EqualFold(filepath.Base(filepath.Dir(cleaned)), ".agent") {
+		return trimmed
+	}
+	if security.IsUnsafeWorkspaceRootPath(filepath.Dir(filepath.Dir(cleaned))) {
+		return defaultPlanPath()
+	}
+	return trimmed
 }
 
 func (a API) record(event observe.Event) {
