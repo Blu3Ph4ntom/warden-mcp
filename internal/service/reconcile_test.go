@@ -127,3 +127,45 @@ completed_tasks: 0
 		t.Fatalf("expected top-level state drift conflict, got %+v", data)
 	}
 }
+
+func TestReconcilePlanRejectsAuditMetadataDrift(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, "PLAN.md")
+	active := `---
+plan_id: reconcile-plan
+title: Reconcile Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Reconcile Plan
+
+## Phase 1 — Design
+- [ ] PH01-T01 first task | priority:P2
+  notes:
+    - {"actor_type":"agent","text":"captured design note","created_at":"2026-03-07T00:00:00Z"}
+  evidence:
+    - {"kind":"log","ref":"design-log","summary":"design capture"}
+- [ ] PH01-T02 second task
+
+## Phase 2 — Build
+- [ ] PH02-T01 implement
+- [ ] PH02-T02 verify
+`
+	if err := os.WriteFile(planPath, []byte(active), 0o644); err != nil {
+		t.Fatalf("write active plan failed: %v", err)
+	}
+	candidate := strings.Replace(active, "- [ ] PH01-T01 first task | priority:P2", "- [ ] PH01-T01 first task | priority:P0", 1)
+	candidate = strings.Replace(candidate, "  notes:\n    - {\"actor_type\":\"agent\",\"text\":\"captured design note\",\"created_at\":\"2026-03-07T00:00:00Z\"}\n", "", 1)
+	candidate = strings.Replace(candidate, "  evidence:\n    - {\"kind\":\"log\",\"ref\":\"design-log\",\"summary\":\"design capture\"}\n", "", 1)
+	data, _, err := ReconcilePlan(planPath, contracts.ReconcilePlanRequest{PlanID: "reconcile-plan", MarkdownContent: candidate, Mode: contracts.ReconcileApply})
+	if err != nil {
+		t.Fatalf("expected metadata drift conflict response, got error %v", err)
+	}
+	if data.Reconciled || len(data.Conflicts) == 0 || data.Conflicts[0].Code != "TASK_METADATA_DRIFT" {
+		t.Fatalf("expected audit metadata drift conflict, got %+v", data)
+	}
+}

@@ -89,6 +89,10 @@ func reconcileDiff(active, candidate domain.Plan, requestedPlanID string) ([]con
 		}
 		for taskID, activeTask := range activeTasks {
 			candidateTask := candidateTasks[taskID]
+			if taskMetadataDrifted(activeTask, candidateTask) {
+				conflicts = append(conflicts, contracts.Conflict{Code: "TASK_METADATA_DRIFT", Message: "candidate markdown changed audit metadata that must be preserved", TargetID: taskID})
+				continue
+			}
 			if taskChanged(activeTask, candidateTask) {
 				changedIDs = append(changedIDs, taskID)
 			}
@@ -108,6 +112,10 @@ func tasksByID(tasks []domain.Task) map[string]domain.Task {
 
 func taskChanged(active, candidate domain.Task) bool {
 	return active.Title != candidate.Title || active.Status != candidate.Status || active.Priority != candidate.Priority || active.Required != candidate.Required || !reflect.DeepEqual(sortedStrings(active.DependsOn), sortedStrings(candidate.DependsOn))
+}
+
+func taskMetadataDrifted(active, candidate domain.Task) bool {
+	return !reflect.DeepEqual(active.Notes, candidate.Notes) || !reflect.DeepEqual(active.Evidence, candidate.Evidence)
 }
 
 func sortedStrings(values []string) []string {
