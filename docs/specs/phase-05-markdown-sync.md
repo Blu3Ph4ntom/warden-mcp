@@ -71,19 +71,20 @@ Supported keys today:
 - `priority: P0|P1|P2|P3`
 - `depends_on: PH##-T##,PH##-T##`
 - `required: true|false`
+- `status: cancelled|waived` when the `[-]` checkbox would otherwise be ambiguous
 
 If no metadata is needed, the task line remains the plain `- [ ] PH##-T## Description` form.
 
-`blocked`, `cancelled`, and `waived` still project through the checkbox marker because the current markdown projection intentionally stays compact.
+`blocked`, `cancelled`, and `waived` all project through the `[-]` checkbox marker; `status:` is emitted only for `cancelled` and `waived` so those terminal states round-trip exactly.
 
 ## Note and evidence blocks
 
 Optional task metadata blocks use nested bullets below the task entry:
 
-- `notes:` followed by timestamped bullets in the form `- 2026-03-07T00:00:00Z | agent | text`
-- `evidence:` followed by bullets in the form `- kind | ref | optional summary`
+- `notes:` followed by compact JSON bullets representing `{ "actor_type", "text", "created_at" }`
+- `evidence:` followed by compact JSON bullets representing `{ "kind", "ref", "summary" }`
 
-These blocks are projections of canonical metadata and are never the sole source of truth.
+These blocks are projections of canonical metadata and are never the sole source of truth, but they must round-trip without discarding audit fields.
 
 ## Markdown export rules
 

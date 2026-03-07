@@ -18,7 +18,7 @@ func ResetTask(planPath string, req contracts.ResetTaskRequest) (contracts.Reset
 	if issues := resetReq.Validate(); len(issues) > 0 {
 		return contracts.ResetTaskData{}, issues, fmt.Errorf("%s", issues[0].Message)
 	}
-	plan, warnings, err := planfile.ResetTaskStatusFile(planPath, req.TaskID, target)
+	plan, warnings, err := planfile.ResetTaskFile(planPath, planfile.TaskResetMutation{TaskID: req.TaskID, TargetStatus: target, Reason: req.Reason, ActorType: domain.ActorSystem, Timestamp: time.Now().UTC()})
 	if err != nil {
 		return contracts.ResetTaskData{}, warnings, err
 	}

@@ -85,13 +85,16 @@ type BlockingReason struct {
 }
 
 type TaskSummary struct {
-	TaskID    string            `json:"task_id"`
-	PhaseID   string            `json:"phase_id"`
-	Title     string            `json:"title"`
-	Status    domain.TaskStatus `json:"status"`
-	Priority  domain.Priority   `json:"priority"`
-	DependsOn []string          `json:"depends_on"`
-	UpdatedAt string            `json:"updated_at"`
+	TaskID    string                `json:"task_id"`
+	PhaseID   string                `json:"phase_id"`
+	Title     string                `json:"title"`
+	Status    domain.TaskStatus     `json:"status"`
+	Priority  domain.Priority       `json:"priority"`
+	DependsOn []string              `json:"depends_on"`
+	Required  bool                  `json:"required"`
+	Evidence  []domain.EvidenceItem `json:"evidence,omitempty"`
+	Notes     []domain.Note         `json:"notes,omitempty"`
+	UpdatedAt string                `json:"updated_at"`
 }
 
 type PhaseSummary struct {

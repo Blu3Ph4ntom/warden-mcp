@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"warden-mcp/internal/domain"
@@ -41,5 +42,12 @@ completed_tasks: 1
 	}
 	if data.Task.Status != domain.TaskInProgress {
 		t.Fatalf("expected reopened task status, got %+v", data)
+	}
+	updated, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("read updated plan failed: %v", err)
+	}
+	if !strings.Contains(string(updated), "reset_reason: reopen after failed verification") {
+		t.Fatalf("expected reset reason to be persisted, got %s", string(updated))
 	}
 }

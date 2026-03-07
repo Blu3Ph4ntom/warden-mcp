@@ -1,6 +1,7 @@
 package planfile
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -100,7 +101,8 @@ func parsePhases(lines []string, updatedAt time.Time) ([]domain.Phase, []domain.
 	phases := make([]domain.Phase, 0)
 	issues := make([]domain.ValidationIssue, 0)
 	var current *domain.Phase
-	for _, raw := range lines {
+	for index := 0; index < len(lines); index++ {
+		raw := lines[index]
 		line := strings.TrimSpace(raw)
 		if line == "" {
 			continue
@@ -127,9 +129,12 @@ func parsePhases(lines []string, updatedAt time.Time) ([]domain.Phase, []domain.
 			issues = append(issues, domain.ValidationIssue{Severity: "error", Code: "TASK_PHASE_SECTION_MISMATCH", Message: "task ID does not match current phase section", Path: match[2]})
 			continue
 		}
-		title, priority, dependsOn, required, metaIssues := parseTaskMetadata(match[3], match[2])
+		title, priority, dependsOn, required, status, metaIssues := parseTaskMetadata(match[3], match[2], checkboxStatus(match[1]))
 		issues = append(issues, metaIssues...)
-		current.Tasks = append(current.Tasks, domain.Task{TaskID: match[2], PhaseID: phaseID, Title: title, Status: checkboxStatus(match[1]), Priority: priority, DependsOn: dependsOn, Required: required, UpdatedAt: updatedAt})
+		notes, evidence, nextIndex, blockIssues := parseTaskBlocks(lines, index+1, match[2])
+		issues = append(issues, blockIssues...)
+		current.Tasks = append(current.Tasks, domain.Task{TaskID: match[2], PhaseID: phaseID, Title: title, Status: status, Priority: priority, DependsOn: dependsOn, Required: required, Evidence: evidence, Notes: notes, UpdatedAt: updatedAt})
+		index = nextIndex - 1
 	}
 	if current != nil {
 		phases = append(phases, *current)
@@ -205,12 +210,13 @@ func canFinish(plan domain.Plan) bool {
 	return true
 }
 
-func parseTaskMetadata(raw, taskID string) (string, domain.Priority, []string, bool, []domain.ValidationIssue) {
+func parseTaskMetadata(raw, taskID string, defaultStatus domain.TaskStatus) (string, domain.Priority, []string, bool, domain.TaskStatus, []domain.ValidationIssue) {
 	parts := strings.Split(raw, " | ")
 	title := strings.TrimSpace(parts[0])
 	priority := domain.PriorityP2
 	dependsOn := make([]string, 0)
 	required := true
+	status := defaultStatus
 	issues := make([]domain.ValidationIssue, 0)
 	for _, segment := range parts[1:] {
 		key, value, ok := strings.Cut(strings.TrimSpace(segment), ":")
@@ -239,11 +245,67 @@ func parseTaskMetadata(raw, taskID string) (string, domain.Priority, []string, b
 			default:
 				issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_REQUIRED_INVALID", Message: "task required metadata must be true or false", Path: taskID})
 			}
+		case "status":
+			candidate := domain.TaskStatus(strings.ToLower(value))
+			if !candidate.Valid() {
+				issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_STATUS_INVALID", Message: "task status metadata is invalid", Path: taskID})
+				continue
+			}
+			status = candidate
 		default:
 			issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_METADATA_IGNORED", Message: "unknown task metadata key ignored", Path: taskID})
 		}
 	}
-	return title, priority, dependsOn, required, issues
+	return title, priority, dependsOn, required, status, issues
+}
+
+func parseTaskBlocks(lines []string, start int, taskID string) ([]domain.Note, []domain.EvidenceItem, int, []domain.ValidationIssue) {
+	notes := make([]domain.Note, 0)
+	evidence := make([]domain.EvidenceItem, 0)
+	issues := make([]domain.ValidationIssue, 0)
+	section := ""
+	index := start
+	for ; index < len(lines); index++ {
+		raw := lines[index]
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(raw, "  ") {
+			break
+		}
+		switch trimmed {
+		case "notes:":
+			section = "notes"
+		case "evidence:":
+			section = "evidence"
+		default:
+			if !strings.HasPrefix(raw, "    - ") {
+				issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_BLOCK_IGNORED", Message: "task metadata block line ignored", Path: taskID})
+				continue
+			}
+			payload := strings.TrimSpace(strings.TrimPrefix(raw, "    - "))
+			switch section {
+			case "notes":
+				var note domain.Note
+				if err := json.Unmarshal([]byte(payload), &note); err != nil {
+					issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_NOTE_INVALID", Message: "task note block could not be parsed", Path: taskID})
+					continue
+				}
+				notes = append(notes, note)
+			case "evidence":
+				var item domain.EvidenceItem
+				if err := json.Unmarshal([]byte(payload), &item); err != nil {
+					issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_EVIDENCE_INVALID", Message: "task evidence block could not be parsed", Path: taskID})
+					continue
+				}
+				evidence = append(evidence, item)
+			default:
+				issues = append(issues, domain.ValidationIssue{Severity: "warning", Code: "TASK_BLOCK_IGNORED", Message: "task block item appeared before a supported section header", Path: taskID})
+			}
+		}
+	}
+	return notes, evidence, index, issues
 }
 
 func parseCSVList(value string) []string {

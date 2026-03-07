@@ -1,6 +1,7 @@
 package planfile
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -23,6 +24,7 @@ func Render(plan domain.Plan) string {
 		builder.WriteString(fmt.Sprintf("## Phase %d — %s\n", index+1, phase.Title))
 		for _, task := range phase.Tasks {
 			builder.WriteString(fmt.Sprintf("- [%s] %s %s%s\n", markerForStatus(task.Status), task.TaskID, task.Title, taskMetadataSuffix(task)))
+			renderTaskBlocks(&builder, task)
 		}
 		builder.WriteString("\n")
 	}
@@ -30,7 +32,7 @@ func Render(plan domain.Plan) string {
 }
 
 func taskMetadataSuffix(task domain.Task) string {
-	segments := make([]string, 0, 3)
+	segments := make([]string, 0, 4)
 	if task.Priority != "" && task.Priority != domain.PriorityP2 {
 		segments = append(segments, fmt.Sprintf("priority:%s", task.Priority))
 	}
@@ -40,10 +42,36 @@ func taskMetadataSuffix(task domain.Task) string {
 	if !task.Required {
 		segments = append(segments, "required:false")
 	}
+	if task.Status == domain.TaskCancelled || task.Status == domain.TaskWaived {
+		segments = append(segments, fmt.Sprintf("status:%s", task.Status))
+	}
 	if len(segments) == 0 {
 		return ""
 	}
 	return " | " + strings.Join(segments, " | ")
+}
+
+func renderTaskBlocks(builder *strings.Builder, task domain.Task) {
+	if len(task.Notes) > 0 {
+		builder.WriteString("  notes:\n")
+		for _, note := range task.Notes {
+			builder.WriteString("    - " + mustMarshalCompact(note) + "\n")
+		}
+	}
+	if len(task.Evidence) > 0 {
+		builder.WriteString("  evidence:\n")
+		for _, evidence := range task.Evidence {
+			builder.WriteString("    - " + mustMarshalCompact(evidence) + "\n")
+		}
+	}
+}
+
+func mustMarshalCompact(value any) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
 }
 
 func markerForStatus(status domain.TaskStatus) string {

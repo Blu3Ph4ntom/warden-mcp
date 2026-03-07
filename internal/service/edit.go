@@ -318,7 +318,9 @@ func closeTask(plan *domain.Plan, taskID string, status domain.TaskStatus, reaso
 		return nil, "", fmt.Errorf("invalid closure transition: %s -> %s", task.Status, status)
 	}
 	task.Status = status
-	task.UpdatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	task.Notes = append(task.Notes, domain.Note{ActorType: domain.ActorSystem, Text: "closure_reason: " + strings.TrimSpace(reason), CreatedAt: now})
+	task.UpdatedAt = now
 	return []string{taskID}, string(status) + " task " + taskID, nil
 }
 

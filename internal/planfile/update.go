@@ -3,14 +3,27 @@ package planfile
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"warden-mcp/internal/domain"
 )
 
+type TaskUpdateMutation struct {
+	TaskID       string
+	TargetStatus domain.TaskStatus
+	ActorType    domain.ActorType
+	Note         string
+	Reason       string
+	Evidence     []domain.EvidenceItem
+	Timestamp    time.Time
+}
+
 func UpdateTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain.Plan, []domain.ValidationIssue, error) {
+	return UpdateTaskFile(path, TaskUpdateMutation{TaskID: taskID, TargetStatus: target})
+}
+
+func UpdateTaskFile(path string, mutation TaskUpdateMutation) (domain.Plan, []domain.ValidationIssue, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return domain.Plan{}, nil, err
@@ -19,7 +32,7 @@ func UpdateTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain
 	if err != nil {
 		return domain.Plan{}, nil, err
 	}
-	updated, err := UpdateTaskStatusContent(string(content), taskID, target)
+	updated, err := UpdateTaskContent(string(content), mutation)
 	if err != nil {
 		return domain.Plan{}, nil, err
 	}
@@ -30,73 +43,41 @@ func UpdateTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain
 }
 
 func UpdateTaskStatusContent(content, taskID string, target domain.TaskStatus) (string, error) {
-	lines := splitNormalizedLines(content)
-	matches := 0
-	for i, line := range lines {
-		match := taskLinePattern.FindStringSubmatch(line)
-		if match == nil || match[2] != taskID {
-			continue
-		}
-		current := checkboxStatus(match[1])
-		if current != target && !domain.CanTransitionTask(current, target) {
-			return "", fmt.Errorf("invalid task transition: %s -> %s", current, target)
-		}
-		marker, err := statusMarker(target)
-		if err != nil {
-			return "", err
-		}
-		lines[i] = replaceTaskMarker(line, match[1], marker)
-		matches++
-	}
-	return finalizeUpdatedContent(lines, matches, taskID)
+	return UpdateTaskContent(content, TaskUpdateMutation{TaskID: taskID, TargetStatus: target})
 }
 
-func splitNormalizedLines(content string) []string {
-	return strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
-}
-
-func replaceTaskMarker(line, currentMarker, targetMarker string) string {
-	return strings.Replace(line, "["+currentMarker+"]", "["+targetMarker+"]", 1)
-}
-
-func finalizeUpdatedContent(lines []string, matches int, taskID string) (string, error) {
-	if matches == 0 {
-		return "", fmt.Errorf("task not found: %s", taskID)
-	}
-	if matches > 1 {
-		return "", fmt.Errorf("task appears multiple times: %s", taskID)
-	}
-	updated := strings.Join(lines, "\n")
-	plan, _, err := Parse(updated, time.Now().UTC())
+func UpdateTaskContent(content string, mutation TaskUpdateMutation) (string, error) {
+	plan, _, err := Parse(content, mutationTime(mutation.Timestamp))
 	if err != nil {
 		return "", err
 	}
-	return rewriteFrontmatter(updated, plan), nil
+	if err := applyTaskUpdate(&plan, mutation); err != nil {
+		return "", err
+	}
+	return Render(plan), nil
 }
 
-func rewriteFrontmatter(content string, plan domain.Plan) string {
-	lines := strings.Split(content, "\n")
-	_, bodyStart, err := parseFrontmatter(lines)
+func applyTaskUpdate(plan *domain.Plan, mutation TaskUpdateMutation) error {
+	task, err := findTaskForMutation(plan, mutation.TaskID)
 	if err != nil {
-		return content
+		return err
 	}
-	replacements := map[string]string{
-		"current_phase":   nextCurrentPhaseID(plan),
-		"completed_tasks": strconv.Itoa(plan.CompletedTaskCount()),
-		"can_finish":      strconv.FormatBool(canFinish(plan)),
+	if mutation.TargetStatus == "" {
+		return fmt.Errorf("target status is required")
 	}
-	for i := 1; i < bodyStart-1; i++ {
-		match := frontmatterLinePattern.FindStringSubmatch(lines[i])
-		if match == nil {
-			continue
-		}
-		value, ok := replacements[match[1]]
-		if !ok {
-			continue
-		}
-		lines[i] = match[1] + ": " + value
+	if task.Status != mutation.TargetStatus && !domain.CanTransitionTask(task.Status, mutation.TargetStatus) {
+		return fmt.Errorf("invalid task transition: %s -> %s", task.Status, mutation.TargetStatus)
 	}
-	return strings.Join(lines, "\n")
+	now := mutationTime(mutation.Timestamp)
+	task.Status = mutation.TargetStatus
+	appendNote(task, normalizeActor(mutation.ActorType), mutation.Note, now)
+	appendReasonNote(task, normalizeActor(mutation.ActorType), mutation.Reason, now, "reason")
+	if len(mutation.Evidence) > 0 {
+		task.Evidence = append(task.Evidence, mutation.Evidence...)
+	}
+	task.UpdatedAt = now
+	normalizePlanAfterTaskMutation(plan, now)
+	return nil
 }
 
 func nextCurrentPhaseID(plan domain.Plan) string {
@@ -109,6 +90,64 @@ func nextCurrentPhaseID(plan domain.Plan) string {
 		return ""
 	}
 	return plan.Phases[len(plan.Phases)-1].PhaseID
+}
+
+func findTaskForMutation(plan *domain.Plan, taskID string) (*domain.Task, error) {
+	var found *domain.Task
+	for phaseIndex := range plan.Phases {
+		for taskIndex := range plan.Phases[phaseIndex].Tasks {
+			if plan.Phases[phaseIndex].Tasks[taskIndex].TaskID != taskID {
+				continue
+			}
+			if found != nil {
+				return nil, fmt.Errorf("task appears multiple times: %s", taskID)
+			}
+			found = &plan.Phases[phaseIndex].Tasks[taskIndex]
+		}
+	}
+	if found == nil {
+		return nil, fmt.Errorf("task not found: %s", taskID)
+	}
+	return found, nil
+}
+
+func normalizePlanAfterTaskMutation(plan *domain.Plan, now time.Time) {
+	for index := range plan.Phases {
+		plan.Phases[index].Status = rollupPhaseStatus(plan.Phases[index])
+	}
+	plan.CanFinish = canFinish(*plan)
+	plan.Status = rollupPlanStatus(*plan)
+	plan.CurrentPhaseID = nextCurrentPhaseID(*plan)
+	plan.UpdatedAt = now
+}
+
+func mutationTime(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Now().UTC()
+	}
+	return value.UTC()
+}
+
+func normalizeActor(actor domain.ActorType) domain.ActorType {
+	if actor.Valid() {
+		return actor
+	}
+	return domain.ActorSystem
+}
+
+func appendNote(task *domain.Task, actor domain.ActorType, text string, createdAt time.Time) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	task.Notes = append(task.Notes, domain.Note{ActorType: actor, Text: text, CreatedAt: createdAt})
+}
+
+func appendReasonNote(task *domain.Task, actor domain.ActorType, reason string, createdAt time.Time, prefix string) {
+	if reason == "" {
+		return
+	}
+	appendNote(task, actor, prefix+": "+reason, createdAt)
 }
 
 func statusMarker(status domain.TaskStatus) (string, error) {

@@ -8,7 +8,19 @@ import (
 	"warden-mcp/internal/domain"
 )
 
+type TaskResetMutation struct {
+	TaskID       string
+	TargetStatus domain.TaskStatus
+	Reason       string
+	ActorType    domain.ActorType
+	Timestamp    time.Time
+}
+
 func ResetTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain.Plan, []domain.ValidationIssue, error) {
+	return ResetTaskFile(path, TaskResetMutation{TaskID: taskID, TargetStatus: target})
+}
+
+func ResetTaskFile(path string, mutation TaskResetMutation) (domain.Plan, []domain.ValidationIssue, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return domain.Plan{}, nil, err
@@ -17,7 +29,7 @@ func ResetTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain.
 	if err != nil {
 		return domain.Plan{}, nil, err
 	}
-	updated, err := ResetTaskStatusContent(string(content), taskID, target)
+	updated, err := ResetTaskContent(string(content), mutation)
 	if err != nil {
 		return domain.Plan{}, nil, err
 	}
@@ -28,26 +40,28 @@ func ResetTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain.
 }
 
 func ResetTaskStatusContent(content, taskID string, target domain.TaskStatus) (string, error) {
-	lines := splitNormalizedLines(content)
-	matches := 0
-	for i, line := range lines {
-		match := taskLinePattern.FindStringSubmatch(line)
-		if match == nil || match[2] != taskID {
-			continue
-		}
-		current := checkboxStatus(match[1])
-		if current != domain.TaskDone && current != domain.TaskCancelled && current != domain.TaskWaived {
-			return "", fmt.Errorf("task is not terminal and cannot be reset: %s", taskID)
-		}
-		if !domain.CanResetTask(current, target) {
-			return "", fmt.Errorf("invalid reset target: %s -> %s", current, target)
-		}
-		marker, err := statusMarker(target)
-		if err != nil {
-			return "", err
-		}
-		lines[i] = replaceTaskMarker(line, match[1], marker)
-		matches++
+	return ResetTaskContent(content, TaskResetMutation{TaskID: taskID, TargetStatus: target})
+}
+
+func ResetTaskContent(content string, mutation TaskResetMutation) (string, error) {
+	plan, _, err := Parse(content, mutationTime(mutation.Timestamp))
+	if err != nil {
+		return "", err
 	}
-	return finalizeUpdatedContent(lines, matches, taskID)
+	task, err := findTaskForMutation(&plan, mutation.TaskID)
+	if err != nil {
+		return "", err
+	}
+	if task.Status != domain.TaskDone && task.Status != domain.TaskCancelled && task.Status != domain.TaskWaived {
+		return "", fmt.Errorf("task is not terminal and cannot be reset: %s", mutation.TaskID)
+	}
+	if !domain.CanResetTask(task.Status, mutation.TargetStatus) {
+		return "", fmt.Errorf("invalid reset target: %s -> %s", task.Status, mutation.TargetStatus)
+	}
+	now := mutationTime(mutation.Timestamp)
+	task.Status = mutation.TargetStatus
+	appendReasonNote(task, normalizeActor(mutation.ActorType), mutation.Reason, now, "reset_reason")
+	task.UpdatedAt = now
+	normalizePlanAfterTaskMutation(&plan, now)
+	return Render(plan), nil
 }

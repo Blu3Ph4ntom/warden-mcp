@@ -106,3 +106,37 @@ current_phase: PH01
 		t.Fatalf("unexpected task metadata %+v", task)
 	}
 }
+
+func TestParseReadsStatusNotesAndEvidenceBlocks(t *testing.T) {
+	content := `---
+plan_id: metadata-plan
+title: Metadata Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+---
+
+# Metadata Plan
+
+## Phase 1 — Setup
+- [-] PH01-T01 create repo | status:waived
+  notes:
+    - {"actor_type":"system","text":"closure_reason: waived during publish hardening","created_at":"2026-03-07T00:00:00Z"}
+  evidence:
+    - {"kind":"ref","ref":"smoke-log","summary":"live MCP smoke output"}
+
+## Phase 2 — Ship
+- [ ] PH02-T01 release
+`
+	plan, issues, err := Parse(content, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("expected no warnings, got %+v", issues)
+	}
+	task := plan.Phases[0].Tasks[0]
+	if task.Status != domain.TaskWaived || len(task.Notes) != 1 || len(task.Evidence) != 1 || task.Evidence[0].Ref != "smoke-log" {
+		t.Fatalf("unexpected parsed task %+v", task)
+	}
+}

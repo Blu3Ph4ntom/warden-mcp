@@ -179,7 +179,7 @@ func summarizeTasks(phases []domain.Phase, includeCompleted bool) []contracts.Ta
 }
 
 func summarizeTask(task domain.Task) contracts.TaskSummary {
-	return contracts.TaskSummary{TaskID: task.TaskID, PhaseID: task.PhaseID, Title: task.Title, Status: task.Status, Priority: task.Priority, DependsOn: append([]string(nil), task.DependsOn...), UpdatedAt: formatTime(task.UpdatedAt)}
+	return contracts.TaskSummary{TaskID: task.TaskID, PhaseID: task.PhaseID, Title: task.Title, Status: task.Status, Priority: task.Priority, DependsOn: append([]string(nil), task.DependsOn...), Required: task.Required, Evidence: append([]domain.EvidenceItem(nil), task.Evidence...), Notes: append([]domain.Note(nil), task.Notes...), UpdatedAt: formatTime(task.UpdatedAt)}
 }
 
 func formatTime(value time.Time) string {
