@@ -36,7 +36,7 @@ completed_tasks: 0
 		t.Fatalf("write plan failed: %v", err)
 	}
 	app := New(root, nil)
-	envelope := app.Update(filepath.Join(".agent", "PLAN.md"), contracts.UpdateTaskRequest{TaskID: "PH01-T01", Status: domain.TaskInProgress, ActorType: domain.ActorAgent})
+	envelope := app.Update(filepath.Join(".agent", "PLAN.md"), contracts.UpdateTaskRequest{PlanID: "sample-plan", TaskID: "PH01-T01", Status: domain.TaskInProgress, ActorType: domain.ActorAgent})
 	if !envelope.OK {
 		t.Fatalf("expected successful update, got %+v", envelope)
 	}
@@ -87,9 +87,38 @@ func TestImportJSONCreatesNormalizedMarkdown(t *testing.T) {
 	if !result.OK {
 		t.Fatalf("expected import success, got %+v", result)
 	}
-	status := app.Status(filepath.Join(".agent", "PLAN.md"), true)
+	status := app.Status(filepath.Join(".agent", "PLAN.md"), contracts.GetStatusRequest{PlanID: "json-import-plan", IncludeTasks: true})
 	if !status.OK || status.Data.Plan.PlanID != "json-import-plan" || len(status.Data.Tasks) != 4 {
 		t.Fatalf("unexpected status after import %+v", status)
+	}
+}
+
+func TestStatusRejectsPlanIDMismatch(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `---
+plan_id: sample-plan
+title: Sample Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+---
+
+# Sample Plan
+
+## Phase 1 — Setup
+- [ ] PH01-T01 create repo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan failed: %v", err)
+	}
+	app := New(root, nil)
+	envelope := app.Status(filepath.Join(".agent", "PLAN.md"), contracts.GetStatusRequest{PlanID: "other-plan"})
+	if envelope.OK || envelope.Error == nil || envelope.Error.Code != contracts.ErrSyncConflict {
+		t.Fatalf("expected sync conflict, got %+v", envelope)
 	}
 }
 

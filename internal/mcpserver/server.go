@@ -142,13 +142,14 @@ func (s *Server) callTool(params toolsCallParams) (map[string]any, bool) {
 	case "get_status":
 		var args struct {
 			PlanPath     string `json:"plan_path,omitempty"`
+			PlanID       string `json:"plan_id,omitempty"`
 			IncludeTasks bool   `json:"include_tasks,omitempty"`
 		}
 		_ = json.Unmarshal(params.Arguments, &args)
 		if args.PlanPath != "" {
 			planPath = args.PlanPath
 		}
-		env := s.API.Status(planPath, args.IncludeTasks)
+		env := s.API.Status(planPath, contracts.GetStatusRequest{PlanID: args.PlanID, IncludeTasks: args.IncludeTasks})
 		return toolResult(env), true
 	case "init_plan":
 		var args contracts.InitPlanRequest
@@ -309,7 +310,7 @@ func toolDefinitions() []map[string]any {
 		{"name": "archive_plan", "description": "Archive the active plan after finish-gate checks pass.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_id": stringSchema("Optional plan ID hint."), "reason": stringSchema("Optional archive reason."), "create_final_export": boolSchema("Write a final JSON export beside the archived plan.")})},
 		{"name": "export_plan", "description": "Export the active plan as markdown or JSON.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "format": stringSchema("Optional export format: markdown or json.")})},
 		{"name": "validate_plan", "description": "Validate the active plan and return issues plus normalized counts.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "mode": stringSchema("Optional validation mode.")})},
-		{"name": "get_status", "description": "Return the active plan status and optional task list.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "include_tasks": boolSchema("Include summarized tasks in the response.")})},
+		{"name": "get_status", "description": "Return the active plan status and optional task list.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional identity guard for the active plan."), "include_tasks": boolSchema("Include summarized tasks in the response.")})},
 		{"name": "get_next_task", "description": "Return the next recommended task under current phase-order rules.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "respect_phase_order": boolSchema("Prefer current phase ordering."), "respect_dependencies": boolSchema("Respect task dependency edges."), "priority_bias": stringSchema("Optional priority bias such as p1.")})},
 		{"name": "request_finish", "description": "Evaluate whether the active plan can finish and explain blocking work.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "actor_type": stringSchema("Actor type requesting finish."), "summary": stringSchema("Optional operator summary.")})},
 		{"name": "update_task", "description": "Update one task status in the active markdown plan projection.", "inputSchema": objectSchema([]string{"task_id", "status"}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "task_id": stringSchema("Task ID like PH09-T01."), "status": stringSchema("Target task status."), "actor_type": stringSchema("Actor type applying the update."), "note": stringSchema("Optional note."), "reason": stringSchema("Optional reason."), "evidence": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}})},

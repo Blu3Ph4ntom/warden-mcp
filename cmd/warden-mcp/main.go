@@ -34,6 +34,7 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	planPath := fs.String("plan", ".agent/PLAN.md", "path to plan markdown")
+	planID := fs.String("plan-id", "", "optional identity guard for the active plan")
 	includeTasks := fs.Bool("include-tasks", false, "include tasks in status output")
 	actor := fs.String("actor", string(domain.ActorAgent), "actor type for finish requests")
 	taskID := fs.String("task", "", "task ID for update operations")
@@ -75,33 +76,33 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if err != nil {
 			return writeError(stdout, command, contracts.ErrPlanInvalid, err.Error())
 		}
-		return writeEnvelope(stdout, app.Edit(*planPath, contracts.EditPlanRequest{Operation: contracts.EditOperation(*operation), TargetID: *targetID, Reason: *reason, Payload: payload}))
+		return writeEnvelope(stdout, app.Edit(*planPath, contracts.EditPlanRequest{PlanID: *planID, Operation: contracts.EditOperation(*operation), TargetID: *targetID, Reason: *reason, Payload: payload}))
 	case "reconcile":
 		content, err := os.ReadFile(*contentFile)
 		if err != nil {
 			return writeError(stdout, command, contracts.ErrPlanInvalid, err.Error())
 		}
-		return writeEnvelope(stdout, app.Reconcile(*planPath, contracts.ReconcilePlanRequest{MarkdownContent: string(content), Mode: contracts.ReconcileMode(*reconcileMode)}))
+		return writeEnvelope(stdout, app.Reconcile(*planPath, contracts.ReconcilePlanRequest{PlanID: *planID, MarkdownContent: string(content), Mode: contracts.ReconcileMode(*reconcileMode)}))
 	case "prioritize":
 		parsedUpdates, err := parsePriorityUpdates(*updates)
 		if err != nil {
 			return writeError(stdout, command, contracts.ErrPlanInvalid, err.Error())
 		}
-		return writeEnvelope(stdout, app.Prioritize(*planPath, contracts.PrioritizeTasksRequest{Updates: parsedUpdates}))
+		return writeEnvelope(stdout, app.Prioritize(*planPath, contracts.PrioritizeTasksRequest{PlanID: *planID, Updates: parsedUpdates}))
 	case "reset":
-		return writeEnvelope(stdout, app.Reset(*planPath, contracts.ResetTaskRequest{TaskID: *taskID, Status: domain.TaskStatus(*status), Reason: *reason}))
+		return writeEnvelope(stdout, app.Reset(*planPath, contracts.ResetTaskRequest{PlanID: *planID, TaskID: *taskID, Status: domain.TaskStatus(*status), Reason: *reason}))
 	case "export":
 		return writeEnvelope(stdout, app.Export(*planPath, contracts.ExportPlanRequest{Format: contracts.ExportFormat(*format)}, *writePath))
 	case "health":
 		return writeEnvelope(stdout, app.Health(*planPath))
 	case "status":
-		return writeEnvelope(stdout, app.Status(*planPath, *includeTasks))
+		return writeEnvelope(stdout, app.Status(*planPath, contracts.GetStatusRequest{PlanID: *planID, IncludeTasks: *includeTasks}))
 	case "next":
-		return writeEnvelope(stdout, app.Next(*planPath, contracts.GetNextTaskRequest{RespectPhaseOrder: true, RespectDependencies: true}))
+		return writeEnvelope(stdout, app.Next(*planPath, contracts.GetNextTaskRequest{PlanID: *planID, RespectPhaseOrder: true, RespectDependencies: true}))
 	case "finish":
-		return writeEnvelope(stdout, app.Finish(*planPath, contracts.RequestFinishRequest{ActorType: domain.ActorType(*actor)}))
+		return writeEnvelope(stdout, app.Finish(*planPath, contracts.RequestFinishRequest{PlanID: *planID, ActorType: domain.ActorType(*actor)}))
 	case "update":
-		return writeEnvelope(stdout, app.Update(*planPath, contracts.UpdateTaskRequest{TaskID: *taskID, Status: domain.TaskStatus(*status), ActorType: domain.ActorType(*actor)}))
+		return writeEnvelope(stdout, app.Update(*planPath, contracts.UpdateTaskRequest{PlanID: *planID, TaskID: *taskID, Status: domain.TaskStatus(*status), ActorType: domain.ActorType(*actor), Reason: *reason}))
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n", command)
 		return 2

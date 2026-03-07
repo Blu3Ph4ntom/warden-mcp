@@ -192,14 +192,17 @@ func (a API) Archive(req contracts.ArchivePlanRequest) contracts.ToolResponseEnv
 	return contracts.ToolResponseEnvelope[contracts.ArchivePlanData]{OK: true, Tool: "archive_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 }
 
-func (a API) Status(planPath string, includeTasks bool) contracts.ToolResponseEnvelope[contracts.GetStatusData] {
+func (a API) Status(planPath string, req contracts.GetStatusRequest) contracts.ToolResponseEnvelope[contracts.GetStatusData] {
 	start := a.now()
 	resolved, plan, warnings, errObj := a.loadPlan(planPath)
 	if errObj != nil {
 		a.record(observe.Event{Kind: "command", Command: "status", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.GetStatusData]{OK: false, Tool: "get_status", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
 	}
-	data := service.GetStatus(plan, includeTasks)
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.GetStatusData]{OK: false, Tool: "get_status", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	data := service.GetStatus(plan, req.IncludeTasks)
 	a.record(observe.Event{Kind: "command", Command: "status", PlanID: plan.PlanID, Accepted: observe.Accepted(true), DurationMS: observe.Since(start), Message: "plan status loaded", Fields: map[string]any{"plan_path": resolved}})
 	return contracts.ToolResponseEnvelope[contracts.GetStatusData]{OK: true, Tool: "get_status", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 }
@@ -286,6 +289,9 @@ func (a API) Next(planPath string, req contracts.GetNextTaskRequest) contracts.T
 		a.record(observe.Event{Kind: "command", Command: "next", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.GetNextTaskData]{OK: false, Tool: "get_next_task", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
 	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.GetNextTaskData]{OK: false, Tool: "get_next_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
 	if req.PlanID == "" {
 		req.PlanID = plan.PlanID
 	}
@@ -300,6 +306,9 @@ func (a API) Finish(planPath string, req contracts.RequestFinishRequest) contrac
 	if errObj != nil {
 		a.record(observe.Event{Kind: "command", Command: "finish", ActorType: string(req.ActorType), Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.RequestFinishData]{OK: false, Tool: "request_finish", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
+	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.RequestFinishData]{OK: false, Tool: "request_finish", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
 	if req.PlanID == "" {
 		req.PlanID = plan.PlanID
@@ -319,6 +328,9 @@ func (a API) Update(planPath string, req contracts.UpdateTaskRequest) contracts.
 	if req.TaskID == "" || req.Status == "" {
 		errObj = errorObject(contracts.ErrTaskNotFound, "update requires task_id and status")
 		a.record(observe.Event{Kind: "command", Command: "update", PlanID: plan.PlanID, TaskID: req.TaskID, ActorType: string(req.ActorType), Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code, Fields: map[string]any{"plan_path": resolved}})
+		return contracts.ToolResponseEnvelope[contracts.UpdateTaskData]{OK: false, Tool: "update_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
 		return contracts.ToolResponseEnvelope[contracts.UpdateTaskData]{OK: false, Tool: "update_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
 	if req.PlanID == "" {
@@ -346,6 +358,9 @@ func (a API) Reset(planPath string, req contracts.ResetTaskRequest) contracts.To
 		errObj = errorObject(contracts.ErrTaskNotFound, "reset requires task_id")
 		return contracts.ToolResponseEnvelope[contracts.ResetTaskData]{OK: false, Tool: "reset_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.ResetTaskData]{OK: false, Tool: "reset_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
 	if req.PlanID == "" {
 		req.PlanID = plan.PlanID
 	}
@@ -365,6 +380,9 @@ func (a API) Prioritize(planPath string, req contracts.PrioritizeTasksRequest) c
 	if errObj != nil {
 		a.record(observe.Event{Kind: "command", Command: "prioritize", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.PrioritizeTasksData]{OK: false, Tool: "prioritize_tasks", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
+	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.PrioritizeTasksData]{OK: false, Tool: "prioritize_tasks", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
 	if req.PlanID == "" {
 		req.PlanID = plan.PlanID
@@ -386,6 +404,9 @@ func (a API) Reconcile(planPath string, req contracts.ReconcilePlanRequest) cont
 		a.record(observe.Event{Kind: "command", Command: "reconcile", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.ReconcilePlanData]{OK: false, Tool: "reconcile_plan", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
 	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.ReconcilePlanData]{OK: false, Tool: "reconcile_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
 	if req.PlanID == "" {
 		req.PlanID = plan.PlanID
 	}
@@ -405,6 +426,9 @@ func (a API) Edit(planPath string, req contracts.EditPlanRequest) contracts.Tool
 	if errObj != nil {
 		a.record(observe.Event{Kind: "command", Command: "edit", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.EditPlanData]{OK: false, Tool: "edit_plan", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
+	}
+	if errObj = requirePlanIdentity(plan, req.PlanID); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.EditPlanData]{OK: false, Tool: "edit_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
 	if req.PlanID == "" {
 		req.PlanID = plan.PlanID
@@ -467,6 +491,13 @@ func valueOrEmpty(task *contracts.TaskSummary) string {
 		return ""
 	}
 	return task.TaskID
+}
+
+func requirePlanIdentity(plan domain.Plan, requested string) *contracts.ErrorObject {
+	if requested == "" || requested == plan.PlanID {
+		return nil
+	}
+	return errorObject(contracts.ErrSyncConflict, "requested plan_id does not match active plan")
 }
 
 func combineHealthStatus(current, next string) string {

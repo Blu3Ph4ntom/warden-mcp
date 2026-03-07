@@ -77,6 +77,9 @@ This document defines the canonical request and response schemas for the public 
 - `status: task_status`
 - `priority: priority`
 - `depends_on: string[]`
+- `required: boolean`
+- `evidence?: { kind: string, ref: string, summary?: string }[]`
+- `notes?: { actor_type: actor_type, text: string, created_at: string }[]`
 - `updated_at: string`
 
 ### `PhaseSummary`
@@ -153,9 +156,10 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id"]`
+- `required: []`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
+  - `plan_path?: string`
   - `include_tasks?: boolean`
   - `include_completed_tasks?: boolean`
   - `include_audit_summary?: boolean`
@@ -192,13 +196,14 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id", "task_id", "status"]`
+- `required: ["task_id", "status"]`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
+  - `plan_path?: string`
   - `task_id: string`
   - `status: task_status`
   - `note?: string`
-  - `evidence?: string[]`
+  - `evidence?: string[]` where each string is either `ref` or `kind | ref | summary`
   - `reason?: string`
   - `actor_type?: actor_type`
 
@@ -212,9 +217,10 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id"]`
+- `required: []`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
+  - `plan_path?: string`
   - `respect_phase_order?: boolean`
   - `respect_dependencies?: boolean`
   - `priority_bias?: priority`
@@ -229,9 +235,10 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id"]`
+- `required: []`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
+  - `plan_path?: string`
   - `actor_type?: actor_type`
   - `summary?: string`
 
@@ -257,7 +264,7 @@ This document defines the canonical request and response schemas for the public 
 - `type: object`
 - `required: ["operation"]`
 - `properties:`
-  - `plan_id?: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
   - `operation: "add_phase" | "add_task" | "update_task_fields" | "move_task" | "split_task" | "reprioritize_task" | "add_dependency" | "remove_dependency" | "waive_task" | "cancel_task"`
   - `target_id?: string`
   - `payload?: object`
@@ -300,9 +307,10 @@ This document defines the canonical request and response schemas for the public 
 
 ### Input
 - `type: object`
-- `required: ["plan_id", "task_id"]`
+- `required: ["task_id", "reason"]`
 - `properties:`
-  - `plan_id: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
+  - `plan_path?: string`
   - `task_id: string`
   - `status?: "not_started" | "in_progress"`
   - `reason: string`
@@ -317,7 +325,7 @@ This document defines the canonical request and response schemas for the public 
 - `type: object`
 - `required: ["updates"]`
 - `properties:`
-  - `plan_id?: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
   - `plan_path?: string`
   - `updates: array` of objects with:
     - `task_id: string`
@@ -392,7 +400,7 @@ This document defines the canonical request and response schemas for the public 
 - `type: object`
 - `required: ["markdown_content"]`
 - `properties:`
-  - `plan_id?: string`
+  - `plan_id?: string` — optional identity guard; if provided and it does not match the active plan, the tool returns `SYNC_CONFLICT`
   - `markdown_content: string`
   - `mode?: "dry_run" | "apply"`
 
