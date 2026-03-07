@@ -56,7 +56,7 @@ completed_tasks: 2
 	if len(frames) != 4 {
 		t.Fatalf("expected 4 responses, got %d", len(frames))
 	}
-	if !strings.Contains(string(frames[1]), "\"tools\"") || !strings.Contains(string(frames[1]), "health_check") {
+	if !strings.Contains(string(frames[1]), "\"tools\"") || !strings.Contains(string(frames[1]), "health_check") || !strings.Contains(string(frames[1]), "get_agent_guide") {
 		t.Fatalf("expected tools/list payload, got %s", frames[1])
 	}
 	if !strings.Contains(string(frames[2]), "health_check") || !strings.Contains(string(frames[2]), "plan parsed successfully") {
@@ -65,6 +65,152 @@ completed_tasks: 2
 	if !strings.Contains(string(frames[3]), "sample-plan") || !strings.Contains(string(frames[3]), "get_status") {
 		t.Fatalf("expected status tool response, got %s", frames[3])
 	}
+}
+
+func TestServerNegotiatesModernProtocolAndStartupDiscovery(t *testing.T) {
+	input := bytes.NewBuffer(nil)
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": "2025-06-18", "clientInfo": map[string]any{"name": "compat-client", "version": "1.0.0"}}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "resources/list"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "resources/templates/list"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 5, "method": "prompts/list"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 6, "method": "logging/setLevel", "params": map[string]any{"level": "info"}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 7, "method": "completion/complete", "params": map[string]any{"ref": map[string]any{"type": "ref/resource", "uri": "warden://resource-template"}, "argument": map[string]any{"name": "plan_path", "value": ".agent/PLAN.md"}}})
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(t.TempDir(), nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	frames := readTestFrames(t, output.Bytes())
+	if len(frames) != 7 {
+		t.Fatalf("expected 7 responses, got %d", len(frames))
+	}
+	assertFrameContains(t, frames[0], `"protocolVersion":"2025-06-18"`, `"tools":{}`, `"logging":{}`, `"prompts":{}`, `"resources":{}`, `"completions":{}`)
+	assertFrameContains(t, frames[1], `"tools"`, `health_check`)
+	assertFrameContains(t, frames[2], `"resources":[]`)
+	assertFrameContains(t, frames[3], `"resourceTemplates":[]`)
+	assertFrameContains(t, frames[4], `"prompts":[]`)
+	assertFrameContains(t, frames[5], `"result":{}`)
+	assertFrameContains(t, frames[6], `"values":[]`)
+}
+
+func TestServerSupportsLineDelimitedJSONTransport(t *testing.T) {
+	input := bytes.NewBufferString("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"resources/list\"}\n")
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(t.TempDir(), nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	lines := strings.FieldsFunc(strings.TrimSpace(output.String()), func(r rune) bool { return r == '\r' || r == '\n' })
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 line-delimited responses, got %d: %q", len(lines), output.String())
+	}
+	assertFrameContains(t, []byte(lines[0]), `"protocolVersion":"2025-06-18"`)
+	assertFrameContains(t, []byte(lines[1]), `"resources":[]`)
+}
+
+func TestServerRejectsToolCallsBeforeInitializedNotification(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte("# Empty\n"), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	input := bytes.NewBuffer(nil)
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": ProtocolVersion}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "health_check", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md")}}})
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(root, nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	frames := readTestFrames(t, output.Bytes())
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(frames))
+	}
+	assertFrameContains(t, frames[1], `client must send notifications/initialized before tool requests`)
+}
+
+func TestServerFallsBackToLatestSupportedProtocolVersion(t *testing.T) {
+	input := bytes.NewBuffer(nil)
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": "2099-01-01"}})
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(t.TempDir(), nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	frames := readTestFrames(t, output.Bytes())
+	if len(frames) != 1 {
+		t.Fatalf("expected 1 response, got %d", len(frames))
+	}
+	assertFrameContains(t, frames[0], fmt.Sprintf(`"protocolVersion":"%s"`, ProtocolVersion))
+}
+
+func TestServerHandlesAgentGuideWithoutPlan(t *testing.T) {
+	root := t.TempDir()
+	input := bytes.NewBuffer(nil)
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": ProtocolVersion}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "get_agent_guide", "arguments": map[string]any{"detail_level": "brief"}}})
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(root, nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	frames := readTestFrames(t, output.Bytes())
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(frames))
+	}
+	assertFrameContains(t, frames[1], `"tool":"get_agent_guide"`, `"guide_version":"2026-03-07"`, `"plan_detected":false`, `PLAN_NOT_FOUND`, `request_finish`)
+	if strings.Contains(string(frames[1]), `"tool_playbook"`) {
+		t.Fatalf("expected brief guide response without full tool_playbook, got %s", frames[1])
+	}
+}
+
+func TestServerHandlesAgentGuideWithLiveContext(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `---
+plan_id: guide-plan
+title: Guide Plan
+version: 1.0
+status: active
+current_phase: PH02
+can_finish: false
+completed_tasks: 1
+---
+
+# Guide Plan
+
+## Phase 1 — Design
+- [x] PH01-T01 define flow
+
+## Phase 2 — Build
+- [/] PH02-T01 implement tool
+- [ ] PH02-T02 verify tool
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	input := bytes.NewBuffer(nil)
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": ProtocolVersion}})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	writeTestFrame(t, input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "get_agent_guide", "arguments": map[string]any{"plan_path": filepath.Join(".agent", "PLAN.md"), "plan_id": "guide-plan", "detail_level": "full"}}})
+	output := &bytes.Buffer{}
+	server := &Server{API: api.New(root, nil)}
+	if err := server.Serve(input, output); err != nil {
+		t.Fatalf("serve failed: %v", err)
+	}
+	frames := readTestFrames(t, output.Bytes())
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(frames))
+	}
+	assertFrameContains(t, frames[1], `"tool":"get_agent_guide"`, `"plan_id":"guide-plan"`, `"current_phase_id":"PH02"`, `"identity_match":true`, `"tool_playbook"`, `validate_plan`, `request_finish`)
 }
 
 func TestServerHandlesExportToolCall(t *testing.T) {

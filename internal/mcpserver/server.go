@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Blu3Ph4ntom/warden-mcp/internal/api"
 	"github.com/Blu3Ph4ntom/warden-mcp/internal/domain"
@@ -15,13 +17,22 @@ import (
 	"github.com/Blu3Ph4ntom/warden-mcp/internal/observe"
 )
 
-const ProtocolVersion = "2025-03-26"
+const ProtocolVersion = "2025-11-25"
+const AgentGuideVersion = "2026-03-07"
+
+var supportedProtocolVersions = []string{
+	"2024-11-05",
+	"2025-03-26",
+	"2025-06-18",
+	ProtocolVersion,
+}
 
 type Server struct {
 	API         api.API
 	Recorder    observe.Recorder
 	initialized bool
 	negotiated  bool
+	protocol    string
 }
 
 type request struct {
@@ -44,6 +55,14 @@ type responseError struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+type transportMode int
+
+const (
+	transportModeUnknown transportMode = iota
+	transportModeFramed
+	transportModeLineDelimited
+)
+
 type initializeParams struct {
 	ProtocolVersion string         `json:"protocolVersion"`
 	Capabilities    map[string]any `json:"capabilities,omitempty"`
@@ -60,17 +79,21 @@ type toolsCallParams struct {
 
 func (s *Server) Serve(reader io.Reader, writer io.Writer) error {
 	buffered := bufio.NewReader(reader)
+	mode := transportModeUnknown
 	for {
-		payload, err := readFrame(buffered)
+		payload, detectedMode, err := readFrame(buffered)
 		if err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return err
 		}
+		if mode == transportModeUnknown {
+			mode = detectedMode
+		}
 		var req request
 		if err := json.Unmarshal(payload, &req); err != nil {
-			if err := writeFrame(writer, response{JSONRPC: "2.0", Error: &responseError{Code: -32700, Message: "parse error"}}); err != nil {
+			if err := writeFrame(writer, response{JSONRPC: "2.0", Error: &responseError{Code: -32700, Message: "parse error"}}, mode); err != nil {
 				return err
 			}
 			continue
@@ -79,7 +102,7 @@ func (s *Server) Serve(reader io.Reader, writer io.Writer) error {
 		if len(req.ID) == 0 || resp == nil {
 			continue
 		}
-		if err := writeFrame(writer, resp); err != nil {
+		if err := writeFrame(writer, resp, mode); err != nil {
 			return err
 		}
 	}
@@ -91,8 +114,9 @@ func (s *Server) handle(req request) *response {
 	case "initialize":
 		var params initializeParams
 		_ = json.Unmarshal(req.Params, &params)
+		s.protocol = negotiateProtocolVersion(params.ProtocolVersion)
 		s.negotiated = true
-		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "warden-mcp", "version": "0.1.0"}, "instructions": "Use Warden tools to inspect and update the active plan safely."}}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": s.protocol, "capabilities": serverCapabilities(), "serverInfo": map[string]any{"name": "warden-mcp", "version": "0.1.0"}, "instructions": "Use Warden tools to inspect and update the active plan safely."}}
 	case "notifications/initialized":
 		s.initialized = true
 		s.record(observe.Event{Kind: "mcp", Method: req.Method, Accepted: observe.Accepted(true), Message: "client initialized"})
@@ -100,10 +124,35 @@ func (s *Server) handle(req request) *response {
 	case "ping":
 		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
 	case "tools/list":
-		if errResp := s.requireInitialized(req); errResp != nil {
+		if errResp := s.requireNegotiated(req); errResp != nil {
 			return errResp
 		}
 		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"tools": toolDefinitions()}}
+	case "resources/list":
+		if errResp := s.requireNegotiated(req); errResp != nil {
+			return errResp
+		}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"resources": []map[string]any{}}}
+	case "resources/templates/list":
+		if errResp := s.requireNegotiated(req); errResp != nil {
+			return errResp
+		}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"resourceTemplates": []map[string]any{}}}
+	case "prompts/list":
+		if errResp := s.requireNegotiated(req); errResp != nil {
+			return errResp
+		}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"prompts": []map[string]any{}}}
+	case "logging/setLevel":
+		if errResp := s.requireNegotiated(req); errResp != nil {
+			return errResp
+		}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
+	case "completion/complete":
+		if errResp := s.requireNegotiated(req); errResp != nil {
+			return errResp
+		}
+		return &response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"completion": map[string]any{"values": []string{}}}}
 	case "tools/call":
 		if errResp := s.requireInitialized(req); errResp != nil {
 			return errResp
@@ -114,14 +163,38 @@ func (s *Server) handle(req request) *response {
 	}
 }
 
-func (s *Server) requireInitialized(req request) *response {
+func (s *Server) requireNegotiated(req request) *response {
 	if !s.negotiated {
 		return &response{JSONRPC: "2.0", ID: req.ID, Error: &responseError{Code: -32001, Message: "server not initialized"}}
+	}
+	return nil
+}
+
+func (s *Server) requireInitialized(req request) *response {
+	if errResp := s.requireNegotiated(req); errResp != nil {
+		return errResp
 	}
 	if !s.initialized {
 		return &response{JSONRPC: "2.0", ID: req.ID, Error: &responseError{Code: -32002, Message: "client must send notifications/initialized before tool requests"}}
 	}
 	return nil
+}
+
+func negotiateProtocolVersion(requested string) string {
+	if slices.Contains(supportedProtocolVersions, requested) {
+		return requested
+	}
+	return ProtocolVersion
+}
+
+func serverCapabilities() map[string]any {
+	return map[string]any{
+		"tools":       map[string]any{},
+		"prompts":     map[string]any{},
+		"resources":   map[string]any{},
+		"logging":     map[string]any{},
+		"completions": map[string]any{},
+	}
 }
 
 func (s *Server) handleToolCall(req request) *response {
@@ -165,6 +238,14 @@ func (s *Server) callTool(params toolsCallParams) (map[string]any, bool) {
 			planPath = args.PlanPath
 		}
 		env := s.API.Health(planPath)
+		return toolResult(env), true
+	case "get_agent_guide":
+		var args contracts.GetAgentGuideRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		if args.PlanPath != "" {
+			planPath = args.PlanPath
+		}
+		env := s.agentGuide(planPath, args.PlanID, args.DetailLevel)
 		return toolResult(env), true
 	case "export_plan":
 		var args struct {
@@ -305,6 +386,7 @@ func toolDefinitions() []map[string]any {
 	return []map[string]any{
 		{"name": "init_plan", "description": "Create a new governed plan from phased task input.", "inputSchema": objectSchema([]string{"title"}, map[string]any{"title": stringSchema("Plan title."), "plan_id": stringSchema("Optional stable plan ID."), "version": stringSchema("Optional semver version."), "goal": stringSchema("Optional goal statement."), "source_text": stringSchema("Optional source text."), "create_markdown_projection": boolSchema("Whether to create the markdown plan projection."), "phases": map[string]any{"type": "array", "items": map[string]any{"type": "object"}}})},
 		{"name": "health_check", "description": "Run basic workspace and plan readiness checks.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown.")})},
+		{"name": "get_agent_guide", "description": "Return the recommended end-to-end playbook for agents using Warden MCP.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional identity guard for live context."), "detail_level": stringSchema("Guide detail level: brief or full.")})},
 		{"name": "list_plans", "description": "List known active and optionally archived plans in the workspace.", "inputSchema": objectSchema([]string{}, map[string]any{"status": stringSchema("Optional plan status filter."), "include_archived": boolSchema("Include archived plans.")})},
 		{"name": "import_plan", "description": "Import markdown or JSON plan content into the workspace.", "inputSchema": objectSchema([]string{"format", "content"}, map[string]any{"format": stringSchema("Import format: markdown or json."), "content": stringSchema("Plan content to import."), "plan_id": stringSchema("Optional plan ID override."), "mode": stringSchema("Import mode: create, merge, or replace.")})},
 		{"name": "archive_plan", "description": "Archive the active plan after finish-gate checks pass.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_id": stringSchema("Optional plan ID hint."), "reason": stringSchema("Optional archive reason."), "create_final_export": boolSchema("Write a final JSON export beside the archived plan.")})},
@@ -333,6 +415,128 @@ func boolSchema(description string) map[string]any {
 	return map[string]any{"type": "boolean", "description": description}
 }
 
+func (s *Server) agentGuide(planPath, requestedPlanID, detailLevel string) contracts.ToolResponseEnvelope[contracts.AgentGuideData] {
+	if detailLevel == "" {
+		detailLevel = "full"
+	}
+	if detailLevel != "brief" && detailLevel != "full" {
+		detailLevel = "full"
+	}
+	warnings := []domain.ValidationIssue{}
+	guide := baseAgentGuide(detailLevel, planPath)
+	guide.LiveContext = s.buildAgentGuideLiveContext(planPath, requestedPlanID, &warnings)
+	return contracts.ToolResponseEnvelope[contracts.AgentGuideData]{
+		OK:        true,
+		Tool:      "get_agent_guide",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		PlanID:    agentGuidePlanID(guide),
+		Warnings:  dedupeValidationIssues(warnings),
+		Data:      guide,
+	}
+}
+
+func baseAgentGuide(detailLevel, planPath string) contracts.AgentGuideData {
+	guide := contracts.AgentGuideData{
+		GuideVersion: AgentGuideVersion,
+		Summary:      "Use Warden first, preserve plan identity, record evidence as you go, and ask Warden to evaluate finish before claiming the work is complete.",
+		CoreRules: []string{
+			"Start with get_status before making assumptions about the plan.",
+			"Use get_next_task when choosing work instead of inferring the next step from markdown alone.",
+			"Carry plan_id forward once known and treat it as an identity guard on future calls.",
+			"Record meaningful progress with update_task including note, evidence, or reason where applicable.",
+			"Run validate_plan and request_finish before declaring completion.",
+		},
+		RecommendedSequence: []contracts.AgentGuideStep{
+			{Order: 1, Call: "health_check", Why: "Confirm the workspace and plan path are readable."},
+			{Order: 2, Call: "get_status", Why: "Learn the active plan_id, current phase, blocking reasons, and next task hint."},
+			{Order: 3, Call: "get_next_task", Why: "Choose the next recommended task under phase-order and dependency rules."},
+			{Order: 4, Call: "update_task", Why: "Record status changes with notes, evidence, or reasons as work progresses."},
+			{Order: 5, Call: "validate_plan", Why: "Check that the active plan remains internally valid after edits or task changes."},
+			{Order: 6, Call: "request_finish", Why: "Ask Warden whether the plan is actually finishable before claiming done."},
+		},
+		ExampleCalls: []contracts.AgentGuideExampleCall{
+			{Name: "get_status", Arguments: map[string]any{"plan_path": planPath}},
+			{Name: "get_next_task", Arguments: map[string]any{"plan_path": planPath, "respect_phase_order": true, "respect_dependencies": true}},
+			{Name: "update_task", Arguments: map[string]any{"plan_path": planPath, "plan_id": "<from_get_status>", "task_id": "PHXX-TYY", "status": "in_progress", "note": "Started implementation."}},
+			{Name: "request_finish", Arguments: map[string]any{"plan_path": planPath, "plan_id": "<from_get_status>", "actor_type": string(domain.ActorAgent)}},
+		},
+	}
+	if detailLevel == "brief" {
+		guide.ExampleCalls = guide.ExampleCalls[:2]
+		return guide
+	}
+	guide.ToolPlaybook = []contracts.AgentGuideToolEntry{
+		{Name: "get_status", UseWhen: "Whenever you need canonical plan state, identity, blocking reasons, or current phase context.", Notes: []string{"Prefer this before reading markdown directly.", "Carry forward the returned plan_id."}},
+		{Name: "get_next_task", UseWhen: "When you need the next recommended unit of work.", Notes: []string{"Use after get_status.", "Prefer dependency and phase-order flags unless you have a reason not to."}},
+		{Name: "update_task", UseWhen: "When task state changes or you need to add evidence, notes, or reasons.", Notes: []string{"Use note/evidence for auditability.", "Default actor_type should be agent."}},
+		{Name: "validate_plan", UseWhen: "After plan edits, reconcile flows, or before final completion claims."},
+		{Name: "request_finish", UseWhen: "Immediately before claiming the plan is done.", Notes: []string{"Treat a denied finish as authoritative remaining work."}},
+		{Name: "archive_plan", UseWhen: "Only after request_finish allows completion and you are performing closure work."},
+		{Name: "edit_plan / reconcile_plan", UseWhen: "When the requested work changes plan structure rather than only task state.", Notes: []string{"Prefer bounded edits.", "Validate afterward."}},
+	}
+	guide.FinishGateRules = []string{
+		"Do not claim completion from intuition; request_finish is the gate.",
+		"Required unfinished tasks block finish even if optional tasks do not.",
+		"If request_finish denies completion, surface the blocking reasons instead of summarizing optimistically.",
+		"Archive only after the finish gate passes and closure is intentional.",
+	}
+	return guide
+}
+
+func (s *Server) buildAgentGuideLiveContext(planPath, requestedPlanID string, warnings *[]domain.ValidationIssue) *contracts.AgentGuideLiveContext {
+	ctx := &contracts.AgentGuideLiveContext{PlanPath: planPath, SuggestedNextCalls: []string{"health_check", "get_status", "get_next_task"}}
+	health := s.API.Health(planPath)
+	*warnings = append(*warnings, health.Warnings...)
+	if health.Data.PlanID == "" {
+		*warnings = append(*warnings, domain.ValidationIssue{Severity: "warning", Code: contracts.ErrPlanNotFound, Message: fmt.Sprintf("No active plan detected at %s.", planPath), Path: planPath})
+		return ctx
+	}
+	ctx.PlanDetected = true
+	ctx.PlanID = health.Data.PlanID
+	if requestedPlanID != "" {
+		match := requestedPlanID == health.Data.PlanID
+		ctx.IdentityMatch = &match
+		if !match {
+			*warnings = append(*warnings, domain.ValidationIssue{Severity: "warning", Code: contracts.ErrSyncConflict, Message: fmt.Sprintf("Requested plan_id %q does not match active plan_id %q.", requestedPlanID, health.Data.PlanID), Path: planPath})
+			ctx.SuggestedNextCalls = []string{"get_status", "health_check"}
+			return ctx
+		}
+	}
+	status := s.API.Status(planPath, contracts.GetStatusRequest{PlanID: requestedPlanID})
+	*warnings = append(*warnings, status.Warnings...)
+	if status.OK {
+		ctx.CurrentPhaseID = status.Data.Plan.CurrentPhaseID
+		ctx.PlanStatus = string(status.Data.Plan.Status)
+		ctx.NextTaskID = status.Data.NextTaskID
+		ctx.SuggestedNextCalls = []string{"get_status", "get_next_task", "update_task", "validate_plan", "request_finish"}
+	}
+	return ctx
+}
+
+func agentGuidePlanID(guide contracts.AgentGuideData) string {
+	if guide.LiveContext == nil {
+		return ""
+	}
+	return guide.LiveContext.PlanID
+}
+
+func dedupeValidationIssues(issues []domain.ValidationIssue) []domain.ValidationIssue {
+	if len(issues) < 2 {
+		return issues
+	}
+	seen := map[string]struct{}{}
+	result := make([]domain.ValidationIssue, 0, len(issues))
+	for _, issue := range issues {
+		key := strings.Join([]string{issue.Severity, issue.Code, issue.Message, issue.Path}, "\x00")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, issue)
+	}
+	return result
+}
+
 func toolResult(envelope any) map[string]any {
 	payload, _ := json.Marshal(envelope)
 	var structured any
@@ -345,15 +549,19 @@ func inferOK(envelope any) bool {
 	return !bytes.Contains(data, []byte(`"ok":false`))
 }
 
-func readFrame(reader *bufio.Reader) ([]byte, error) {
+func readFrame(reader *bufio.Reader) ([]byte, transportMode, error) {
 	contentLength := -1
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF && line == "" {
-				return nil, io.EOF
+				return nil, transportModeUnknown, io.EOF
 			}
-			return nil, err
+			return nil, transportModeUnknown, err
+		}
+		trimmed := strings.TrimSpace(line)
+		if contentLength < 0 && looksLikeJSON(trimmed) {
+			return readLineDelimitedJSON(reader, line)
 		}
 		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
@@ -366,24 +574,57 @@ func readFrame(reader *bufio.Reader) ([]byte, error) {
 		if strings.EqualFold(strings.TrimSpace(parts[0]), "Content-Length") {
 			value, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 			if err != nil {
-				return nil, fmt.Errorf("invalid content length: %w", err)
+				return nil, transportModeUnknown, fmt.Errorf("invalid content length: %w", err)
 			}
 			contentLength = value
 		}
 	}
 	if contentLength < 0 {
-		return nil, fmt.Errorf("missing Content-Length header")
+		return nil, transportModeUnknown, fmt.Errorf("missing Content-Length header")
 	}
 	payload := make([]byte, contentLength)
 	if _, err := io.ReadFull(reader, payload); err != nil {
-		return nil, err
+		return nil, transportModeUnknown, err
 	}
-	return payload, nil
+	return payload, transportModeFramed, nil
 }
 
-func writeFrame(writer io.Writer, payload any) error {
+func readLineDelimitedJSON(reader *bufio.Reader, firstLine string) ([]byte, transportMode, error) {
+	var buf bytes.Buffer
+	buf.WriteString(strings.TrimSpace(firstLine))
+	for {
+		payload := bytes.TrimSpace(buf.Bytes())
+		if json.Valid(payload) {
+			return bytes.Clone(payload), transportModeLineDelimited, nil
+		}
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF && len(strings.TrimSpace(line)) > 0 {
+				buf.WriteByte('\n')
+				buf.WriteString(strings.TrimSpace(line))
+				payload = bytes.TrimSpace(buf.Bytes())
+				if json.Valid(payload) {
+					return bytes.Clone(payload), transportModeLineDelimited, nil
+				}
+			}
+			return nil, transportModeUnknown, io.ErrUnexpectedEOF
+		}
+		buf.WriteByte('\n')
+		buf.WriteString(strings.TrimSpace(line))
+	}
+}
+
+func looksLikeJSON(line string) bool {
+	return strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[")
+}
+
+func writeFrame(writer io.Writer, payload any, mode transportMode) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
+		return err
+	}
+	if mode == transportModeLineDelimited {
+		_, err = fmt.Fprintf(writer, "%s\n", data)
 		return err
 	}
 	_, err = fmt.Fprintf(writer, "Content-Length: %d\r\n\r\n%s", len(data), data)

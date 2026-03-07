@@ -192,6 +192,50 @@ This document defines the canonical request and response schemas for the public 
 - `status: string`
 - `message: string`
 
+## `get_agent_guide`
+
+### Input
+- `type: object`
+- `required: []`
+- `properties:`
+  - `plan_path?: string`
+  - `plan_id?: string` — optional identity guard used only for live-context reporting
+  - `detail_level?: string` — `brief` or `full`
+
+### Output `data`
+- `guide_version: string`
+- `summary: string`
+- `core_rules: string[]`
+- `recommended_sequence: AgentGuideStep[]`
+- `tool_playbook?: AgentGuideToolEntry[]`
+- `finish_gate_rules?: string[]`
+- `example_calls?: AgentGuideExampleCall[]`
+- `live_context?: AgentGuideLiveContext`
+
+### `AgentGuideStep`
+- `order: number`
+- `call: string`
+- `why: string`
+
+### `AgentGuideToolEntry`
+- `name: string`
+- `use_when: string`
+- `notes?: string[]`
+
+### `AgentGuideExampleCall`
+- `name: string`
+- `arguments?: object`
+
+### `AgentGuideLiveContext`
+- `plan_path: string`
+- `plan_detected: boolean`
+- `plan_id?: string`
+- `current_phase_id?: string`
+- `plan_status?: string`
+- `next_task_id?: string`
+- `identity_match?: boolean`
+- `suggested_next_calls?: string[]`
+
 ## `update_task`
 
 ### Input

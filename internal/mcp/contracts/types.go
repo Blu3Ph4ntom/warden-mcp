@@ -210,6 +210,51 @@ type HealthCheckData struct {
 	CheckedAt string        `json:"checked_at"`
 }
 
+type GetAgentGuideRequest struct {
+	PlanPath    string `json:"plan_path,omitempty"`
+	PlanID      string `json:"plan_id,omitempty"`
+	DetailLevel string `json:"detail_level,omitempty"`
+}
+
+type AgentGuideStep struct {
+	Order int    `json:"order"`
+	Call  string `json:"call"`
+	Why   string `json:"why"`
+}
+
+type AgentGuideToolEntry struct {
+	Name    string   `json:"name"`
+	UseWhen string   `json:"use_when"`
+	Notes   []string `json:"notes,omitempty"`
+}
+
+type AgentGuideExampleCall struct {
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+}
+
+type AgentGuideLiveContext struct {
+	PlanPath           string   `json:"plan_path"`
+	PlanDetected       bool     `json:"plan_detected"`
+	PlanID             string   `json:"plan_id,omitempty"`
+	CurrentPhaseID     string   `json:"current_phase_id,omitempty"`
+	PlanStatus         string   `json:"plan_status,omitempty"`
+	NextTaskID         string   `json:"next_task_id,omitempty"`
+	IdentityMatch      *bool    `json:"identity_match,omitempty"`
+	SuggestedNextCalls []string `json:"suggested_next_calls,omitempty"`
+}
+
+type AgentGuideData struct {
+	GuideVersion        string                  `json:"guide_version"`
+	Summary             string                  `json:"summary"`
+	CoreRules           []string                `json:"core_rules"`
+	RecommendedSequence []AgentGuideStep        `json:"recommended_sequence"`
+	ToolPlaybook        []AgentGuideToolEntry   `json:"tool_playbook,omitempty"`
+	FinishGateRules     []string                `json:"finish_gate_rules,omitempty"`
+	ExampleCalls        []AgentGuideExampleCall `json:"example_calls,omitempty"`
+	LiveContext         *AgentGuideLiveContext  `json:"live_context,omitempty"`
+}
+
 type UpdateTaskRequest struct {
 	PlanID    string            `json:"plan_id"`
 	TaskID    string            `json:"task_id"`
