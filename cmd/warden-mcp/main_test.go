@@ -9,7 +9,8 @@ import (
 )
 
 func TestRunStatusCommandEmitsStatusEnvelope(t *testing.T) {
-	planPath := filepath.Join(t.TempDir(), "PLAN.md")
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
 	content := `---
 plan_id: sample-plan
 title: Sample Plan
@@ -28,12 +29,25 @@ current_phase: PH02
 - [/] PH02-T01 start implementation
 - [ ] PH02-T02 finish implementation
 `
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
 	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write plan: %v", err)
 	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(previousWD)
+	}()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	code := run([]string{"status", "-plan", planPath, "-include-tasks"}, stdout, stderr)
+	code := run([]string{"status", "-plan", filepath.Join(".agent", "PLAN.md"), "-include-tasks"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected zero exit code, got %d stderr=%s", code, stderr.String())
 	}
@@ -42,5 +56,32 @@ current_phase: PH02
 		if !strings.Contains(output, fragment) {
 			t.Fatalf("expected output to contain %s, got %s", fragment, output)
 		}
+	}
+}
+
+func TestRunRejectsPlanPathOutsideWorkspace(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "PLAN.md")
+	if err := os.WriteFile(outside, []byte("---\nplan_id: x\ntitle: x\nversion: 1.0\nstatus: active\ncurrent_phase: PH01\n---\n"), 0o644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(previousWD)
+	}()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"status", "-plan", outside}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected JSON error envelope exit code 0, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "\"ok\": false") || !strings.Contains(stdout.String(), "\"code\": \"PLAN_INVALID\"") {
+		t.Fatalf("expected plan path denial, got %s", stdout.String())
 	}
 }

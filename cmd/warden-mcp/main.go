@@ -11,6 +11,7 @@ import (
 	"warden-mcp/internal/domain"
 	"warden-mcp/internal/mcp/contracts"
 	"warden-mcp/internal/planfile"
+	"warden-mcp/internal/security"
 	"warden-mcp/internal/service"
 )
 
@@ -32,9 +33,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	plan, warnings, err := planfile.Load(*planPath)
+	workspaceRoot, err := os.Getwd()
 	if err != nil {
-		return writeError(stdout, command, contracts.ErrPlanNotFound, err.Error())
+		return writeError(stdout, command, contracts.ErrInternal, err.Error())
+	}
+	resolvedPlanPath, err := security.ResolveWorkspacePath(workspaceRoot, *planPath, ".md")
+	if err != nil {
+		return writeError(stdout, command, contracts.ErrPlanInvalid, security.RedactSecretLikeText(err.Error()))
+	}
+	plan, warnings, err := planfile.Load(resolvedPlanPath)
+	if err != nil {
+		return writeError(stdout, command, contracts.ErrPlanNotFound, security.RedactSecretLikeText(err.Error()))
 	}
 	switch command {
 	case "status":
