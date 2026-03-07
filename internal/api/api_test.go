@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"warden-mcp/internal/domain"
@@ -40,5 +42,98 @@ completed_tasks: 0
 	}
 	if len(envelope.Warnings) != 1 {
 		t.Fatalf("expected one deduped warning, got %+v", envelope.Warnings)
+	}
+}
+
+func TestInitCreatesPlanAndListFindsIt(t *testing.T) {
+	root := t.TempDir()
+	app := New(root, nil)
+	result := app.Init(contracts.InitPlanRequest{
+		Title:   "Agent Delivery Plan",
+		Version: "1.0",
+		Phases: []contracts.InitPlanPhaseInput{
+			{Title: "Design", Tasks: []contracts.InitPlanTaskInput{{Title: "define contracts"}, {Title: "review plan"}}},
+			{Title: "Build", Tasks: []contracts.InitPlanTaskInput{{Title: "implement server"}, {Title: "run tests"}}},
+		},
+	})
+	if !result.OK {
+		t.Fatalf("expected init success, got %+v", result)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agent", "PLAN.md")); err != nil {
+		t.Fatalf("expected plan file to exist: %v", err)
+	}
+	list := app.List(contracts.ListPlansRequest{})
+	if !list.OK || len(list.Data.Plans) != 1 || list.Data.Plans[0].PlanID != "agent-delivery-plan" {
+		t.Fatalf("unexpected list response %+v", list)
+	}
+}
+
+func TestImportJSONCreatesNormalizedMarkdown(t *testing.T) {
+	root := t.TempDir()
+	app := New(root, nil)
+	contentBytes, err := json.Marshal(domain.Plan{
+		PlanID:  "json-import-plan",
+		Title:   "JSON Import Plan",
+		Version: "1.0.0",
+		Phases: []domain.Phase{
+			{Title: "Plan", Tasks: []domain.Task{{Title: "draft work", Required: true}, {Title: "review work", Required: true}}},
+			{Title: "Ship", Tasks: []domain.Task{{Title: "release work", Required: true}, {Title: "verify work", Required: true}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	result := app.Import(contracts.ImportPlanRequest{Format: contracts.ImportJSON, Content: string(contentBytes), Mode: contracts.ImportCreate})
+	if !result.OK {
+		t.Fatalf("expected import success, got %+v", result)
+	}
+	status := app.Status(filepath.Join(".agent", "PLAN.md"), true)
+	if !status.OK || status.Data.Plan.PlanID != "json-import-plan" || len(status.Data.Tasks) != 4 {
+		t.Fatalf("unexpected status after import %+v", status)
+	}
+}
+
+func TestArchiveMovesFinishedPlanIntoArchive(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, ".agent", "PLAN.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	content := `---
+plan_id: archive-plan
+title: Archive Plan
+version: 1.0.0
+status: completed
+current_phase: PH02
+can_finish: true
+completed_tasks: 4
+---
+
+# Archive Plan
+
+## Phase 1 — Design
+- [x] PH01-T01 define work
+- [x] PH01-T02 review work
+
+## Phase 2 — Build
+- [x] PH02-T01 implement
+- [x] PH02-T02 verify
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan failed: %v", err)
+	}
+	app := New(root, nil)
+	result := app.Archive(contracts.ArchivePlanRequest{PlanID: "archive-plan", CreateFinalExport: true})
+	if !result.OK || !result.Data.Archived {
+		t.Fatalf("expected archive success, got %+v", result)
+	}
+	if _, err := os.Stat(planPath); !os.IsNotExist(err) {
+		t.Fatalf("expected active plan to be removed, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, result.Data.ArchivePath)); err != nil {
+		t.Fatalf("expected archived markdown to exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, strings.TrimSuffix(result.Data.ArchivePath, ".md")+".json")); err != nil {
+		t.Fatalf("expected archived json export to exist: %v", err)
 	}
 }

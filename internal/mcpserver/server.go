@@ -150,6 +150,11 @@ func (s *Server) callTool(params toolsCallParams) (map[string]any, bool) {
 		}
 		env := s.API.Status(planPath, args.IncludeTasks)
 		return toolResult(env), true
+	case "init_plan":
+		var args contracts.InitPlanRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		env := s.API.Init(args)
+		return toolResult(env), true
 	case "health_check":
 		var args struct {
 			PlanPath string `json:"plan_path,omitempty"`
@@ -171,6 +176,21 @@ func (s *Server) callTool(params toolsCallParams) (map[string]any, bool) {
 			planPath = args.PlanPath
 		}
 		env := s.API.Export(planPath, contracts.ExportPlanRequest{PlanID: args.PlanID, Format: args.Format}, "")
+		return toolResult(env), true
+	case "import_plan":
+		var args contracts.ImportPlanRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		env := s.API.Import(args)
+		return toolResult(env), true
+	case "list_plans":
+		var args contracts.ListPlansRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		env := s.API.List(args)
+		return toolResult(env), true
+	case "archive_plan":
+		var args contracts.ArchivePlanRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		env := s.API.Archive(args)
 		return toolResult(env), true
 	case "validate_plan":
 		var args struct {
@@ -233,6 +253,42 @@ func (s *Server) callTool(params toolsCallParams) (map[string]any, bool) {
 		}
 		env := s.API.Update(planPath, contracts.UpdateTaskRequest{PlanID: args.PlanID, TaskID: args.TaskID, Status: args.Status, ActorType: args.ActorType, Note: args.Note, Evidence: args.Evidence, Reason: args.Reason})
 		return toolResult(env), true
+	case "reset_task":
+		var args struct {
+			PlanPath string            `json:"plan_path,omitempty"`
+			PlanID   string            `json:"plan_id,omitempty"`
+			TaskID   string            `json:"task_id"`
+			Status   domain.TaskStatus `json:"status,omitempty"`
+			Reason   string            `json:"reason"`
+		}
+		_ = json.Unmarshal(params.Arguments, &args)
+		if args.PlanPath != "" {
+			planPath = args.PlanPath
+		}
+		env := s.API.Reset(planPath, contracts.ResetTaskRequest{PlanID: args.PlanID, TaskID: args.TaskID, Status: args.Status, Reason: args.Reason})
+		return toolResult(env), true
+	case "prioritize_tasks":
+		var args struct {
+			PlanPath string                     `json:"plan_path,omitempty"`
+			PlanID   string                     `json:"plan_id,omitempty"`
+			Updates  []contracts.PriorityUpdate `json:"updates"`
+		}
+		_ = json.Unmarshal(params.Arguments, &args)
+		if args.PlanPath != "" {
+			planPath = args.PlanPath
+		}
+		env := s.API.Prioritize(planPath, contracts.PrioritizeTasksRequest{PlanID: args.PlanID, Updates: args.Updates})
+		return toolResult(env), true
+	case "reconcile_plan":
+		var args contracts.ReconcilePlanRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		env := s.API.Reconcile(planPath, args)
+		return toolResult(env), true
+	case "edit_plan":
+		var args contracts.EditPlanRequest
+		_ = json.Unmarshal(params.Arguments, &args)
+		env := s.API.Edit(planPath, args)
+		return toolResult(env), true
 	default:
 		return nil, false
 	}
@@ -246,13 +302,21 @@ func (s *Server) record(event observe.Event) {
 
 func toolDefinitions() []map[string]any {
 	return []map[string]any{
+		{"name": "init_plan", "description": "Create a new governed plan from phased task input.", "inputSchema": objectSchema([]string{"title"}, map[string]any{"title": stringSchema("Plan title."), "plan_id": stringSchema("Optional stable plan ID."), "version": stringSchema("Optional semver version."), "goal": stringSchema("Optional goal statement."), "source_text": stringSchema("Optional source text."), "create_markdown_projection": boolSchema("Whether to create the markdown plan projection."), "phases": map[string]any{"type": "array", "items": map[string]any{"type": "object"}}})},
 		{"name": "health_check", "description": "Run basic workspace and plan readiness checks.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown.")})},
+		{"name": "list_plans", "description": "List known active and optionally archived plans in the workspace.", "inputSchema": objectSchema([]string{}, map[string]any{"status": stringSchema("Optional plan status filter."), "include_archived": boolSchema("Include archived plans.")})},
+		{"name": "import_plan", "description": "Import markdown or JSON plan content into the workspace.", "inputSchema": objectSchema([]string{"format", "content"}, map[string]any{"format": stringSchema("Import format: markdown or json."), "content": stringSchema("Plan content to import."), "plan_id": stringSchema("Optional plan ID override."), "mode": stringSchema("Import mode: create, merge, or replace.")})},
+		{"name": "archive_plan", "description": "Archive the active plan after finish-gate checks pass.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_id": stringSchema("Optional plan ID hint."), "reason": stringSchema("Optional archive reason."), "create_final_export": boolSchema("Write a final JSON export beside the archived plan.")})},
 		{"name": "export_plan", "description": "Export the active plan as markdown or JSON.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "format": stringSchema("Optional export format: markdown or json.")})},
 		{"name": "validate_plan", "description": "Validate the active plan and return issues plus normalized counts.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "mode": stringSchema("Optional validation mode.")})},
 		{"name": "get_status", "description": "Return the active plan status and optional task list.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "include_tasks": boolSchema("Include summarized tasks in the response.")})},
 		{"name": "get_next_task", "description": "Return the next recommended task under current phase-order rules.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "respect_phase_order": boolSchema("Prefer current phase ordering."), "respect_dependencies": boolSchema("Respect task dependency edges."), "priority_bias": stringSchema("Optional priority bias such as p1.")})},
 		{"name": "request_finish", "description": "Evaluate whether the active plan can finish and explain blocking work.", "inputSchema": objectSchema([]string{}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "actor_type": stringSchema("Actor type requesting finish."), "summary": stringSchema("Optional operator summary.")})},
 		{"name": "update_task", "description": "Update one task status in the active markdown plan projection.", "inputSchema": objectSchema([]string{"task_id", "status"}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "task_id": stringSchema("Task ID like PH09-T01."), "status": stringSchema("Target task status."), "actor_type": stringSchema("Actor type applying the update."), "note": stringSchema("Optional note."), "reason": stringSchema("Optional reason."), "evidence": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}})},
+		{"name": "reset_task", "description": "Reset a terminal task back to not_started or in_progress with a required reason.", "inputSchema": objectSchema([]string{"task_id", "reason"}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "task_id": stringSchema("Task ID like PH09-T01."), "status": stringSchema("Reset target status: not_started or in_progress."), "reason": stringSchema("Why the task is being reopened.")})},
+		{"name": "prioritize_tasks", "description": "Update task priorities in the active plan projection.", "inputSchema": objectSchema([]string{"updates"}, map[string]any{"plan_path": stringSchema("Workspace-relative path to the plan markdown."), "plan_id": stringSchema("Optional plan ID hint."), "updates": map[string]any{"type": "array", "items": map[string]any{"type": "object"}}})},
+		{"name": "reconcile_plan", "description": "Compare candidate markdown to the active plan and optionally apply safe changes.", "inputSchema": objectSchema([]string{"markdown_content"}, map[string]any{"plan_id": stringSchema("Optional plan ID hint."), "markdown_content": stringSchema("Candidate markdown plan content."), "mode": stringSchema("dry_run or apply.")})},
+		{"name": "edit_plan", "description": "Apply a bounded structured plan edit operation to the active plan.", "inputSchema": objectSchema([]string{"operation"}, map[string]any{"plan_id": stringSchema("Optional plan ID hint."), "target_id": stringSchema("Optional phase/task target."), "operation": stringSchema("Structured edit operation."), "reason": stringSchema("Required for waive/cancel operations."), "payload": map[string]any{"type": "object"}})},
 	}
 }
 
@@ -270,7 +334,9 @@ func boolSchema(description string) map[string]any {
 
 func toolResult(envelope any) map[string]any {
 	payload, _ := json.Marshal(envelope)
-	return map[string]any{"content": []map[string]any{{"type": "text", "text": string(payload)}}, "isError": !inferOK(envelope)}
+	var structured any
+	_ = json.Unmarshal(payload, &structured)
+	return map[string]any{"content": []map[string]any{{"type": "text", "text": string(payload)}}, "structuredContent": structured, "isError": !inferOK(envelope)}
 }
 
 func inferOK(envelope any) bool {
