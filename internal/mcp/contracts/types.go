@@ -190,6 +190,23 @@ type GetStatusData struct {
 	StalledSince    string           `json:"stalled_since,omitempty"`
 }
 
+type HealthCheckRequest struct {
+	PlanPath string `json:"plan_path,omitempty"`
+}
+
+type HealthCheck struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type HealthCheckData struct {
+	Status    string        `json:"status"`
+	PlanID    string        `json:"plan_id,omitempty"`
+	Checks    []HealthCheck `json:"checks"`
+	CheckedAt string        `json:"checked_at"`
+}
+
 type UpdateTaskRequest struct {
 	PlanID    string            `json:"plan_id"`
 	TaskID    string            `json:"task_id"`

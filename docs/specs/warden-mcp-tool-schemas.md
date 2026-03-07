@@ -168,6 +168,25 @@ This document defines the canonical request and response schemas for the public 
 - `stalled: boolean`
 - `stalled_since?: string`
 
+## `health_check`
+
+### Input
+- `type: object`
+- `required: []`
+- `properties:`
+  - `plan_path?: string`
+
+### Output `data`
+- `status: string`
+- `plan_id?: string`
+- `checks: HealthCheck[]`
+- `checked_at: string`
+
+### `HealthCheck`
+- `name: string`
+- `status: string`
+- `message: string`
+
 ## `update_task`
 
 ### Input
