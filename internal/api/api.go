@@ -84,7 +84,7 @@ func (a API) Update(planPath string, req contracts.UpdateTaskRequest) contracts.
 		a.record(observe.Event{Kind: "command", Command: "update", PlanID: plan.PlanID, TaskID: req.TaskID, ActorType: string(req.ActorType), Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code, Fields: map[string]any{"plan_path": resolved}})
 		return contracts.ToolResponseEnvelope[contracts.UpdateTaskData]{OK: false, Tool: "update_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
-	warnings = append(warnings, updateWarnings...)
+	warnings = dedupeWarnings(append(warnings, updateWarnings...))
 	a.record(observe.Event{Kind: "command", Command: "update", PlanID: plan.PlanID, PhaseID: data.Phase.PhaseID, TaskID: req.TaskID, ActorType: string(req.ActorType), Accepted: observe.Accepted(true), DurationMS: observe.Since(start), Message: "task update accepted", Fields: map[string]any{"plan_path": resolved, "status": req.Status}})
 	return contracts.ToolResponseEnvelope[contracts.UpdateTaskData]{OK: true, Tool: "update_task", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 }
@@ -134,4 +134,21 @@ func valueOrEmpty(task *contracts.TaskSummary) string {
 		return ""
 	}
 	return task.TaskID
+}
+
+func dedupeWarnings(warnings []domain.ValidationIssue) []domain.ValidationIssue {
+	if len(warnings) < 2 {
+		return warnings
+	}
+	seen := make(map[string]struct{}, len(warnings))
+	result := make([]domain.ValidationIssue, 0, len(warnings))
+	for _, warning := range warnings {
+		key := warning.Severity + "|" + warning.Code + "|" + warning.Message + "|" + warning.Path
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, warning)
+	}
+	return result
 }
