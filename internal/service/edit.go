@@ -22,6 +22,9 @@ func EditPlan(planPath string, req contracts.EditPlanRequest) (contracts.EditPla
 		return contracts.EditPlanData{}, warnings, err
 	}
 	plan = normalizeEditedPlan(plan)
+	if issues := plan.Validate(); hasErrorValidationIssues(issues) {
+		return contracts.EditPlanData{}, issues, fmt.Errorf("%s", firstValidationErrorIssue(issues).Message)
+	}
 	plan, warnings, err = planfile.WritePlanFile(planPath, plan)
 	if err != nil {
 		return contracts.EditPlanData{}, warnings, err
@@ -181,6 +184,9 @@ func updateTaskFields(plan *domain.Plan, taskID string, payload updateTaskFields
 	task := &plan.Phases[phaseIndex].Tasks[taskIndex]
 	if payload.Title != nil {
 		task.Title = strings.TrimSpace(*payload.Title)
+		if task.Title == "" {
+			return nil, "", fmt.Errorf("task title is required")
+		}
 	}
 	if payload.Priority != "" {
 		if !payload.Priority.Valid() {
@@ -276,6 +282,9 @@ func addDependency(plan *domain.Plan, taskID, dependsOn string) ([]string, strin
 	}
 	if _, _, ok := findTaskLocation(*plan, dependsOn); !ok {
 		return nil, "", fmt.Errorf("dependency task not found: %s", dependsOn)
+	}
+	if dependsOn == taskID {
+		return nil, "", fmt.Errorf("task cannot depend on itself: %s", taskID)
 	}
 	task := &plan.Phases[phaseIndex].Tasks[taskIndex]
 	if !slices.Contains(task.DependsOn, dependsOn) {
@@ -412,7 +421,7 @@ func updateDependencyReferences(plan *domain.Plan, oldID, newID string) {
 func normalizeEditedPlan(plan domain.Plan) domain.Plan {
 	for phaseIndex := range plan.Phases {
 		phase := &plan.Phases[phaseIndex]
-		allDone, anyStarted, anyBlocked := len(phase.Tasks) > 0, false, false
+		requiredTasks := make([]domain.Task, 0, len(phase.Tasks))
 		for taskIndex := range phase.Tasks {
 			task := &phase.Tasks[taskIndex]
 			if task.Priority == "" {
@@ -421,31 +430,14 @@ func normalizeEditedPlan(plan domain.Plan) domain.Plan {
 			if task.UpdatedAt.IsZero() {
 				task.UpdatedAt = time.Now().UTC()
 			}
-			if task.Status == domain.TaskBlocked {
-				anyBlocked = true
-			}
-			if task.Status != domain.TaskNotStarted {
-				anyStarted = true
-			}
-			if task.Status != domain.TaskDone && task.Status != domain.TaskCancelled && task.Status != domain.TaskWaived {
-				allDone = false
+			if task.Required {
+				requiredTasks = append(requiredTasks, *task)
 			}
 		}
-		switch {
-		case len(phase.Tasks) == 0:
-			phase.Status = domain.PhaseNotStarted
-		case allDone:
-			phase.Status = domain.PhaseCompleted
-		case anyBlocked && !anyStarted:
-			phase.Status = domain.PhaseBlocked
-		case anyStarted:
-			phase.Status = domain.PhaseInProgress
-		default:
-			phase.Status = domain.PhaseNotStarted
-		}
+		phase.Status = planfile.RollupPhaseStatus(domain.Phase{PhaseID: phase.PhaseID, Title: phase.Title, Tasks: requiredTasks})
 	}
 	plan.CanFinish = finishReady(plan)
-	plan.Status = domain.PlanActive
+	plan.Status = planfile.RollupPlanStatus(plan)
 	plan.CurrentPhaseID = ""
 	for _, phase := range plan.Phases {
 		if phase.Status != domain.PhaseCompleted {
@@ -455,8 +447,25 @@ func normalizeEditedPlan(plan domain.Plan) domain.Plan {
 	}
 	if plan.CurrentPhaseID == "" && len(plan.Phases) > 0 {
 		plan.CurrentPhaseID = plan.Phases[len(plan.Phases)-1].PhaseID
-		plan.Status = domain.PlanCompleted
 	}
 	plan.UpdatedAt = time.Now().UTC()
 	return plan
+}
+
+func hasErrorValidationIssues(issues []domain.ValidationIssue) bool {
+	for _, issue := range issues {
+		if issue.Severity == "error" {
+			return true
+		}
+	}
+	return false
+}
+
+func firstValidationErrorIssue(issues []domain.ValidationIssue) domain.ValidationIssue {
+	for _, issue := range issues {
+		if issue.Severity == "error" {
+			return issue
+		}
+	}
+	return domain.ValidationIssue{}
 }

@@ -78,7 +78,11 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return writeEnvelope(stdout, app.Edit(*planPath, contracts.EditPlanRequest{PlanID: *planID, Operation: contracts.EditOperation(*operation), TargetID: *targetID, Reason: *reason, Payload: payload}))
 	case "reconcile":
-		content, err := os.ReadFile(*contentFile)
+		resolvedContentPath, err := security.ResolveWorkspacePath(workspaceRoot, *contentFile, ".md")
+		if err != nil {
+			return writeError(stdout, command, contracts.ErrPlanInvalid, err.Error())
+		}
+		content, err := os.ReadFile(resolvedContentPath)
 		if err != nil {
 			return writeError(stdout, command, contracts.ErrPlanInvalid, err.Error())
 		}

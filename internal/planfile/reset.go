@@ -2,7 +2,6 @@ package planfile
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"warden-mcp/internal/domain"
@@ -21,22 +20,20 @@ func ResetTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain.
 }
 
 func ResetTaskFile(path string, mutation TaskResetMutation) (domain.Plan, []domain.ValidationIssue, error) {
-	info, err := os.Stat(path)
+	plan, warnings, err := Load(path)
 	if err != nil {
 		return domain.Plan{}, nil, err
 	}
-	content, err := os.ReadFile(path)
+	updated, err := ResetTaskContent(Render(plan), mutation)
 	if err != nil {
-		return domain.Plan{}, nil, err
+		return domain.Plan{}, warnings, err
 	}
-	updated, err := ResetTaskContent(string(content), mutation)
+	parsed, writeWarnings, err := Parse(updated, time.Now().UTC())
 	if err != nil {
-		return domain.Plan{}, nil, err
+		return domain.Plan{}, append(warnings, writeWarnings...), err
 	}
-	if err := os.WriteFile(path, []byte(updated), info.Mode()); err != nil {
-		return domain.Plan{}, nil, err
-	}
-	return Parse(updated, time.Now().UTC())
+	parsed, writeWarnings, err = WritePlanFile(path, parsed)
+	return parsed, append(warnings, writeWarnings...), err
 }
 
 func ResetTaskStatusContent(content, taskID string, target domain.TaskStatus) (string, error) {

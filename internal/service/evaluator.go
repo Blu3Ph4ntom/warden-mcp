@@ -6,6 +6,7 @@ import (
 
 	"warden-mcp/internal/domain"
 	"warden-mcp/internal/mcp/contracts"
+	"warden-mcp/internal/planfile"
 )
 
 func GetStatus(plan domain.Plan, includeTasks bool) contracts.GetStatusData {
@@ -30,6 +31,9 @@ func GetNextTask(plan domain.Plan, req contracts.GetNextTaskRequest) contracts.G
 		candidates := make([]domain.Task, 0)
 		blockers := make([]contracts.BlockingReason, 0)
 		for _, task := range phase.Tasks {
+			if !task.Required {
+				continue
+			}
 			if task.IsTerminal() {
 				continue
 			}
@@ -54,7 +58,7 @@ func GetNextTask(plan domain.Plan, req contracts.GetNextTaskRequest) contracts.G
 			return contracts.GetNextTaskData{Reason: "current phase has blocked work", Blocked: true, BlockingReasons: blockers}
 		}
 	}
-	return contracts.GetNextTaskData{Reason: "no remaining non-terminal tasks", Blocked: false}
+	return contracts.GetNextTaskData{Reason: "no remaining required non-terminal tasks", Blocked: false}
 }
 
 func RequestFinish(plan domain.Plan, req contracts.RequestFinishRequest) contracts.RequestFinishData {
@@ -66,7 +70,7 @@ func RequestFinish(plan domain.Plan, req contracts.RequestFinishRequest) contrac
 		}
 	}
 	for _, phase := range plan.Phases {
-		if phase.Status != domain.PhaseCompleted {
+		if planfile.RollupPhaseStatus(phase) != domain.PhaseCompleted {
 			blocking = append(blocking, contracts.BlockingReason{Code: "PHASE_INCOMPLETE", Message: "phase is not complete", PhaseID: phase.PhaseID})
 		}
 		for _, task := range phase.Tasks {

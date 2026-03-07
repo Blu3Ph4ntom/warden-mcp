@@ -21,6 +21,7 @@ func ReconcilePlan(planPath string, req contracts.ReconcilePlanRequest) (contrac
 		return contracts.ReconcilePlanData{}, warnings, err
 	}
 	conflicts, changedIDs := reconcileDiff(active, candidate, req.PlanID)
+	conflicts = append(conflicts, validationConflicts(candidate)...)
 	data := contracts.ReconcilePlanData{Reconciled: len(conflicts) == 0, Conflicts: conflicts, ChangedIDs: changedIDs, Plan: summarizePlan(active, finishReady(active))}
 	if len(conflicts) > 0 || req.Mode == contracts.ReconcileDryRun || req.Mode == "" {
 		return data, warnings, nil
@@ -127,4 +128,15 @@ func dedupeStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func validationConflicts(plan domain.Plan) []contracts.Conflict {
+	conflicts := make([]contracts.Conflict, 0)
+	for _, issue := range plan.Validate() {
+		if issue.Severity != "error" {
+			continue
+		}
+		conflicts = append(conflicts, contracts.Conflict{Code: issue.Code, Message: issue.Message, TargetID: issue.Path})
+	}
+	return conflicts
 }

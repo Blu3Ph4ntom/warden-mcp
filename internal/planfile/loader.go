@@ -69,11 +69,11 @@ func Parse(content string, updatedAt time.Time) (domain.Plan, []domain.Validatio
 	plan.Phases = phases
 	issues = append(issues, parseIssues...)
 	for i := range plan.Phases {
-		plan.Phases[i].Status = rollupPhaseStatus(plan.Phases[i])
+		plan.Phases[i].Status = RollupPhaseStatus(plan.Phases[i])
 	}
-	plan.CanFinish = canFinish(plan)
+	plan.CanFinish = CanFinishPlan(plan)
 	if plan.Status == "" {
-		plan.Status = rollupPlanStatus(plan)
+		plan.Status = RollupPlanStatus(plan)
 	}
 	return plan, issues, nil
 }
@@ -155,14 +155,18 @@ func checkboxStatus(mark string) domain.TaskStatus {
 	}
 }
 
-func rollupPhaseStatus(phase domain.Phase) domain.PhaseStatus {
+func RollupPhaseStatus(phase domain.Phase) domain.PhaseStatus {
 	if len(phase.Tasks) == 0 {
 		return domain.PhaseNotStarted
+	}
+	requiredTasks := requiredTasks(phase.Tasks)
+	if len(requiredTasks) == 0 {
+		return domain.PhaseCompleted
 	}
 	allDone := true
 	anyStarted := false
 	anyBlocked := false
-	for _, task := range phase.Tasks {
+	for _, task := range requiredTasks {
 		if task.Status == domain.TaskBlocked {
 			anyBlocked = true
 		}
@@ -185,7 +189,7 @@ func rollupPhaseStatus(phase domain.Phase) domain.PhaseStatus {
 	return domain.PhaseNotStarted
 }
 
-func rollupPlanStatus(plan domain.Plan) domain.PlanStatus {
+func RollupPlanStatus(plan domain.Plan) domain.PlanStatus {
 	allCompleted := len(plan.Phases) > 0
 	for _, phase := range plan.Phases {
 		if phase.Status != domain.PhaseCompleted {
@@ -199,7 +203,7 @@ func rollupPlanStatus(plan domain.Plan) domain.PlanStatus {
 	return domain.PlanActive
 }
 
-func canFinish(plan domain.Plan) bool {
+func CanFinishPlan(plan domain.Plan) bool {
 	for _, phase := range plan.Phases {
 		for _, task := range phase.Tasks {
 			if task.Required && !task.IsTerminal() {
@@ -208,6 +212,16 @@ func canFinish(plan domain.Plan) bool {
 		}
 	}
 	return true
+}
+
+func requiredTasks(tasks []domain.Task) []domain.Task {
+	filtered := make([]domain.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if task.Required {
+			filtered = append(filtered, task)
+		}
+	}
+	return filtered
 }
 
 func parseTaskMetadata(raw, taskID string, defaultStatus domain.TaskStatus) (string, domain.Priority, []string, bool, domain.TaskStatus, []domain.ValidationIssue) {

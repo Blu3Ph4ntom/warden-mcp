@@ -1,10 +1,12 @@
 package planfile
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"warden-mcp/internal/domain"
+	"warden-mcp/internal/fsutil"
 )
 
 func WritePlanFile(path string, plan domain.Plan) (domain.Plan, []domain.ValidationIssue, error) {
@@ -16,8 +18,39 @@ func WritePlanFile(path string, plan domain.Plan) (domain.Plan, []domain.Validat
 		return domain.Plan{}, nil, err
 	}
 	content := Render(plan)
-	if err := os.WriteFile(path, []byte(content), mode); err != nil {
-		return domain.Plan{}, nil, err
+	issues := plan.Validate()
+	if hasErrorIssues(issues) {
+		return domain.Plan{}, issues, fmt.Errorf("plan validation failed: %s", firstErrorIssue(issues).Message)
 	}
-	return Parse(content, time.Now().UTC())
+	parsed, warnings, err := Parse(content, time.Now().UTC())
+	if err != nil {
+		return domain.Plan{}, warnings, err
+	}
+	parsedIssues := parsed.Validate()
+	warnings = append(warnings, parsedIssues...)
+	if hasErrorIssues(parsedIssues) {
+		return domain.Plan{}, warnings, fmt.Errorf("plan validation failed: %s", firstErrorIssue(parsedIssues).Message)
+	}
+	if err := fsutil.WriteFileAtomic(path, []byte(content), mode); err != nil {
+		return domain.Plan{}, warnings, err
+	}
+	return parsed, warnings, nil
+}
+
+func hasErrorIssues(issues []domain.ValidationIssue) bool {
+	for _, issue := range issues {
+		if issue.Severity == "error" {
+			return true
+		}
+	}
+	return false
+}
+
+func firstErrorIssue(issues []domain.ValidationIssue) domain.ValidationIssue {
+	for _, issue := range issues {
+		if issue.Severity == "error" {
+			return issue
+		}
+	}
+	return domain.ValidationIssue{}
 }

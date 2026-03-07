@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"warden-mcp/internal/mcp/contracts"
 )
 
 func TestRunStatusCommandEmitsStatusEnvelope(t *testing.T) {
@@ -252,6 +254,29 @@ func TestParsePriorityUpdatesRejectsMalformedInput(t *testing.T) {
 	}
 }
 
+func TestRunReconcileRejectsContentFileOutsideWorkspace(t *testing.T) {
+	root := t.TempDir()
+	outsidePath := filepath.Join(filepath.Dir(root), "outside-plan.md")
+	if err := os.WriteFile(outsidePath, []byte("# outside"), 0o644); err != nil {
+		t.Fatalf("write outside file failed: %v", err)
+	}
+	defer os.Remove(outsidePath)
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(previousWD) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"reconcile", "-content-file", "..\\outside-plan.md"}, stdout, stderr)
+	if code != 0 || !strings.Contains(stdout.String(), contracts.ErrPlanInvalid) {
+		t.Fatalf("expected invalid reconcile path error, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunRejectsPlanPathOutsideWorkspace(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "PLAN.md")
@@ -296,6 +321,11 @@ completed_tasks: 0
 
 ## Phase 1 — Setup
 - [ ] PH01-T01 create repo
+	- [ ] PH01-T02 add tests
+
+	## Phase 2 — Build
+	- [ ] PH02-T01 implement server
+	- [ ] PH02-T02 verify server
 `
 	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)

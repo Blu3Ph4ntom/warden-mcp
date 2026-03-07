@@ -59,3 +59,35 @@ completed_tasks: 0
 		}
 	}
 }
+
+func TestEditPlanRejectsInvalidSelfDependency(t *testing.T) {
+	root := t.TempDir()
+	planPath := filepath.Join(root, "PLAN.md")
+	content := `---
+plan_id: edit-plan
+title: Edit Plan
+version: 1.0.0
+status: active
+current_phase: PH01
+can_finish: false
+completed_tasks: 0
+---
+
+# Edit Plan
+
+## Phase 1 — Design
+- [ ] PH01-T01 first task
+- [ ] PH01-T02 second task
+
+## Phase 2 — Build
+- [ ] PH02-T01 implement
+- [ ] PH02-T02 verify
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan failed: %v", err)
+	}
+	payload, _ := json.Marshal(map[string]any{"depends_on": "PH01-T01"})
+	if _, _, err := EditPlan(planPath, contracts.EditPlanRequest{PlanID: "edit-plan", Operation: contracts.EditAddDependency, TargetID: "PH01-T01", Payload: payload}); err == nil {
+		t.Fatal("expected self-dependency edit to fail")
+	}
+}

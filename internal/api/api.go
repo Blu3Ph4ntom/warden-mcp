@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"warden-mcp/internal/domain"
+	"warden-mcp/internal/fsutil"
 	"warden-mcp/internal/mcp/contracts"
 	"warden-mcp/internal/observe"
 	"warden-mcp/internal/planfile"
@@ -51,7 +52,8 @@ func (a API) Init(req contracts.InitPlanRequest) contracts.ToolResponseEnvelope[
 		errObj := errorObject(contracts.ErrInternal, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.InitPlanData]{OK: false, Tool: "init_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
-	if err := os.WriteFile(resolved, []byte(planfile.Render(plan)), 0o644); err != nil {
+	if _, writeWarnings, err := planfile.WritePlanFile(resolved, plan); err != nil {
+		warnings = dedupeWarnings(append(warnings, writeWarnings...))
 		errObj := errorObject(contracts.ErrInternal, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.InitPlanData]{OK: false, Tool: "init_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
@@ -137,7 +139,8 @@ func (a API) Import(req contracts.ImportPlanRequest) contracts.ToolResponseEnvel
 		errObj = errorObject(contracts.ErrInternal, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: false, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
-	if err := os.WriteFile(resolved, []byte(planfile.Render(plan)), 0o644); err != nil {
+	if _, writeWarnings, err := planfile.WritePlanFile(resolved, plan); err != nil {
+		warnings = dedupeWarnings(append(warnings, writeWarnings...))
 		errObj = errorObject(contracts.ErrInternal, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: false, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
@@ -173,14 +176,14 @@ func (a API) Archive(req contracts.ArchivePlanRequest) contracts.ToolResponseEnv
 		errObj = errorObject(contracts.ErrInternal, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.ArchivePlanData]{OK: false, Tool: "archive_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
-	if err := os.WriteFile(archivePath, []byte(planfile.Render(archived)), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomic(archivePath, []byte(planfile.Render(archived)), 0o644); err != nil {
 		errObj = errorObject(contracts.ErrInternal, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.ArchivePlanData]{OK: false, Tool: "archive_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
 	if req.CreateFinalExport {
 		jsonContent, exportErr := buildExportContent(resolved, archived, contracts.ExportJSON)
 		if exportErr == nil {
-			_ = os.WriteFile(strings.TrimSuffix(archivePath, ".md")+".json", []byte(jsonContent), 0o644)
+			_ = fsutil.WriteFileAtomic(strings.TrimSuffix(archivePath, ".md")+".json", []byte(jsonContent), 0o644)
 		}
 	}
 	if err := os.Remove(resolved); err != nil {
@@ -539,7 +542,7 @@ func (a API) writeExport(content string, format contracts.ExportFormat, outputPa
 	if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
 		return "", errorObject(contracts.ErrExportFailed, err.Error())
 	}
-	if err := os.WriteFile(resolved, []byte(content), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomic(resolved, []byte(content), 0o644); err != nil {
 		return "", errorObject(contracts.ErrExportFailed, err.Error())
 	}
 	return resolved, nil
@@ -599,7 +602,7 @@ func (a API) planFromInit(req contracts.InitPlanRequest) (domain.Plan, []domain.
 			}
 			phase.Tasks = append(phase.Tasks, domain.Task{TaskID: fmt.Sprintf("%s-T%02d", phaseID, taskIndex+1), PhaseID: phaseID, Title: strings.TrimSpace(taskInput.Title), Status: domain.TaskNotStarted, Priority: priority, DependsOn: append([]string(nil), taskInput.DependsOn...), Required: required, UpdatedAt: a.now()})
 		}
-		phase.Status = derivePhaseStatus(phase)
+		phase.Status = planfile.RollupPhaseStatus(phase)
 		plan.Phases = append(plan.Phases, phase)
 	}
 	return normalizePlan(plan), warnings
@@ -666,7 +669,7 @@ func normalizePlan(plan domain.Plan) domain.Plan {
 				task.UpdatedAt = time.Now().UTC()
 			}
 		}
-		plan.Phases[phaseIndex].Status = derivePhaseStatus(plan.Phases[phaseIndex])
+		plan.Phases[phaseIndex].Status = planfile.RollupPhaseStatus(plan.Phases[phaseIndex])
 	}
 	if plan.UpdatedAt.IsZero() {
 		plan.UpdatedAt = time.Now().UTC()
@@ -680,58 +683,11 @@ func normalizePlan(plan domain.Plan) domain.Plan {
 }
 
 func derivePlanStatus(plan domain.Plan) domain.PlanStatus {
-	allCompleted := len(plan.Phases) > 0
-	for _, phase := range plan.Phases {
-		if phase.Status != domain.PhaseCompleted {
-			allCompleted = false
-			break
-		}
-	}
-	if allCompleted {
-		return domain.PlanCompleted
-	}
-	return domain.PlanActive
-}
-
-func derivePhaseStatus(phase domain.Phase) domain.PhaseStatus {
-	if len(phase.Tasks) == 0 {
-		return domain.PhaseNotStarted
-	}
-	allDone := true
-	anyStarted := false
-	anyBlocked := false
-	for _, task := range phase.Tasks {
-		if task.Status == domain.TaskBlocked {
-			anyBlocked = true
-		}
-		if task.Status != domain.TaskNotStarted {
-			anyStarted = true
-		}
-		if task.Status != domain.TaskDone && task.Status != domain.TaskCancelled && task.Status != domain.TaskWaived {
-			allDone = false
-		}
-	}
-	if allDone {
-		return domain.PhaseCompleted
-	}
-	if anyBlocked && !anyStarted {
-		return domain.PhaseBlocked
-	}
-	if anyStarted {
-		return domain.PhaseInProgress
-	}
-	return domain.PhaseNotStarted
+	return planfile.RollupPlanStatus(plan)
 }
 
 func calculateCanFinish(plan domain.Plan) bool {
-	for _, phase := range plan.Phases {
-		for _, task := range phase.Tasks {
-			if task.Required && !task.IsTerminal() {
-				return false
-			}
-		}
-	}
-	return true
+	return planfile.CanFinishPlan(plan)
 }
 
 func nextCurrentPhaseID(plan domain.Plan) string {

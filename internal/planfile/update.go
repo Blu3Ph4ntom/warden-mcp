@@ -2,7 +2,6 @@ package planfile
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -24,22 +23,18 @@ func UpdateTaskStatusFile(path, taskID string, target domain.TaskStatus) (domain
 }
 
 func UpdateTaskFile(path string, mutation TaskUpdateMutation) (domain.Plan, []domain.ValidationIssue, error) {
-	info, err := os.Stat(path)
+	plan, warnings, err := Load(path)
 	if err != nil {
 		return domain.Plan{}, nil, err
 	}
-	content, err := os.ReadFile(path)
+	if err := applyTaskUpdate(&plan, mutation); err != nil {
+		return domain.Plan{}, warnings, err
+	}
+	plan, writeWarnings, err := WritePlanFile(path, plan)
 	if err != nil {
-		return domain.Plan{}, nil, err
+		return domain.Plan{}, append(warnings, writeWarnings...), err
 	}
-	updated, err := UpdateTaskContent(string(content), mutation)
-	if err != nil {
-		return domain.Plan{}, nil, err
-	}
-	if err := os.WriteFile(path, []byte(updated), info.Mode()); err != nil {
-		return domain.Plan{}, nil, err
-	}
-	return Parse(updated, time.Now().UTC())
+	return plan, append(warnings, writeWarnings...), nil
 }
 
 func UpdateTaskStatusContent(content, taskID string, target domain.TaskStatus) (string, error) {
@@ -113,10 +108,10 @@ func findTaskForMutation(plan *domain.Plan, taskID string) (*domain.Task, error)
 
 func normalizePlanAfterTaskMutation(plan *domain.Plan, now time.Time) {
 	for index := range plan.Phases {
-		plan.Phases[index].Status = rollupPhaseStatus(plan.Phases[index])
+		plan.Phases[index].Status = RollupPhaseStatus(plan.Phases[index])
 	}
-	plan.CanFinish = canFinish(*plan)
-	plan.Status = rollupPlanStatus(*plan)
+	plan.CanFinish = CanFinishPlan(*plan)
+	plan.Status = RollupPlanStatus(*plan)
 	plan.CurrentPhaseID = nextCurrentPhaseID(*plan)
 	plan.UpdatedAt = now
 }

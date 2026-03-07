@@ -46,6 +46,22 @@ func TestRequestFinishAllowsCompletedPlan(t *testing.T) {
 	}
 }
 
+func TestOptionalTasksDoNotBlockNextTaskOrFinish(t *testing.T) {
+	plan := samplePlan()
+	plan.Phases[1].Tasks[0].Status = domain.TaskDone
+	plan.Phases[1].Tasks[1].Required = false
+	plan.Phases[1].Tasks[1].Status = domain.TaskNotStarted
+	plan.Phases[1].Status = domain.PhaseCompleted
+	next := GetNextTask(plan, contracts.GetNextTaskRequest{PlanID: plan.PlanID, RespectPhaseOrder: true, RespectDependencies: true})
+	if next.NextTask != nil || next.Blocked {
+		t.Fatalf("expected no blocking next task, got %+v", next)
+	}
+	finish := RequestFinish(plan, contracts.RequestFinishRequest{PlanID: plan.PlanID, ActorType: domain.ActorAgent})
+	if !finish.CanFinish || len(finish.IncompleteTaskIDs) != 0 {
+		t.Fatalf("expected finish approval with optional work remaining, got %+v", finish)
+	}
+}
+
 func samplePlan() domain.Plan {
 	now := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
 	return domain.Plan{

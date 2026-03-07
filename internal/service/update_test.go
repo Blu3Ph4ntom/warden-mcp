@@ -27,6 +27,11 @@ completed_tasks: 0
 
 ## Phase 1 — Design
 - [ ] PH01-T01 define scope
+	- [ ] PH01-T02 review scope
+
+	## Phase 2 — Build
+	- [ ] PH02-T01 implement server
+	- [ ] PH02-T02 verify server
 `
 	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write plan failed: %v", err)
