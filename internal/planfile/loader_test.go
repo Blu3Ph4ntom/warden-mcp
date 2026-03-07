@@ -1,6 +1,10 @@
 package planfile
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,5 +54,23 @@ current_phase: PH02
 func TestParseRejectsMissingFrontmatter(t *testing.T) {
 	if _, _, err := Parse("# missing", time.Now().UTC()); err == nil {
 		t.Fatal("expected parse failure for missing frontmatter")
+	}
+}
+
+func TestLoadRejectsOversizePlanFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "PLAN.md")
+	content := strings.Repeat("a", DefaultMaxPlanBytes+1)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	if _, _, err := Load(path); !errors.Is(err, ErrPlanTooLarge) {
+		t.Fatalf("expected ErrPlanTooLarge, got %v", err)
+	}
+}
+
+func TestParseRejectsTooManyLines(t *testing.T) {
+	content := strings.Repeat("line\n", DefaultMaxPlanLines+1)
+	if _, _, err := Parse(content, time.Now().UTC()); !errors.Is(err, ErrPlanTooManyLines) {
+		t.Fatalf("expected ErrPlanTooManyLines, got %v", err)
 	}
 }

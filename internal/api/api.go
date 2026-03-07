@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"time"
 
 	"warden-mcp/internal/domain"
@@ -96,6 +97,9 @@ func (a API) loadPlan(planPath string) (string, domain.Plan, []domain.Validation
 	}
 	plan, warnings, err := planfile.Load(resolved)
 	if err != nil {
+		if errors.Is(err, planfile.ErrPlanTooLarge) || errors.Is(err, planfile.ErrPlanTooManyLines) {
+			return resolved, domain.Plan{}, warnings, errorObject(contracts.ErrPlanInvalid, err.Error())
+		}
 		return resolved, domain.Plan{}, warnings, errorObject(contracts.ErrPlanNotFound, err.Error())
 	}
 	return resolved, plan, warnings, nil

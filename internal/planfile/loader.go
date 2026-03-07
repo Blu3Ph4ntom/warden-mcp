@@ -1,6 +1,7 @@
 package planfile
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -11,16 +12,26 @@ import (
 )
 
 var (
+	ErrPlanTooLarge        = errors.New("plan file exceeds maximum size")
+	ErrPlanTooManyLines    = errors.New("plan file exceeds maximum line count")
 	frontmatterLinePattern = regexp.MustCompile(`^([a-z_]+):\s*(.*)$`)
 	taskLinePattern        = regexp.MustCompile(`^- \[([ xX/\-])\] (PH[0-9]{2}-T[0-9]{2}) (.+)$`)
 	phaseHeadingPattern    = regexp.MustCompile(`^## Phase [0-9]+ [—-] (.+)$`)
 	twoPartVersionPattern  = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
 )
 
+const (
+	DefaultMaxPlanBytes = 1 << 20
+	DefaultMaxPlanLines = 10000
+)
+
 func Load(path string) (domain.Plan, []domain.ValidationIssue, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return domain.Plan{}, nil, err
+	}
+	if info.Size() > DefaultMaxPlanBytes {
+		return domain.Plan{}, nil, fmt.Errorf("%w: %d bytes", ErrPlanTooLarge, info.Size())
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -31,6 +42,9 @@ func Load(path string) (domain.Plan, []domain.ValidationIssue, error) {
 
 func Parse(content string, updatedAt time.Time) (domain.Plan, []domain.ValidationIssue, error) {
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	if len(lines) > DefaultMaxPlanLines {
+		return domain.Plan{}, nil, fmt.Errorf("%w: %d lines", ErrPlanTooManyLines, len(lines))
+	}
 	frontmatter, bodyStart, err := parseFrontmatter(lines)
 	if err != nil {
 		return domain.Plan{}, nil, err
