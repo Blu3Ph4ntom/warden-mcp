@@ -43,6 +43,8 @@ If you prefer Claude Code's plugin flow, this repository ships a repo-root plugi
 
 The plugin launches Warden with `npx -y warden-mcp`, so Claude Code downloads the published npm package on first run instead of requiring a separate global install.
 
+This plugin installs an MCP tool server. It does not currently add custom slash commands.
+
 ### Recommended for most coding-agent users: npm
 
 This is the easiest path for Claude Code, Auggie, Cursor, Windsurf, Codex, and other local MCP clients.
@@ -187,6 +189,8 @@ If Auggie is using a Claude Code-compatible local MCP flow, use the same `warden
 ```
 
 If Auggie exposes environment variables for MCP servers, set `WARDEN_WORKSPACE_ROOT` to the project root so Warden stores the active plan inside the repo.
+
+In Auggie, expect Warden to show up as MCP tools/functions rather than slash commands. Use tool calls like `get_agent_guide`, `health_check`, and `get_status`.
 
 ### Codex CLI (`~/.codex/config.toml`)
 

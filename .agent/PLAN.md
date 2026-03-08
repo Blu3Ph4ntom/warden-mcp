@@ -416,4 +416,7 @@ completed_tasks: 146
 - [x] PH14-T27 Package Claude Code git-marketplace plugin manifests for repo-root install
 - [x] PH14-T28 Document Claude plugin marketplace install flow alongside existing MCP setup guidance
 - [x] PH14-T29 Validate Claude plugin manifests, README instructions, and package metadata consistency
+- [x] PH14-T30 Fix Claude marketplace manifest schema compliance for owner metadata and repo-root plugin source paths
+- [x] PH14-T31 Align Claude plugin MCP config layout with repo-root plugin conventions and validate install expectations
+- [x] PH14-T32 Clarify client UX expectations so Auggie users do not expect slash commands from the Warden MCP tool server
 

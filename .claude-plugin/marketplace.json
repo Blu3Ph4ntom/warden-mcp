@@ -1,14 +1,33 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "warden-mcp-marketplace",
-  "version": "0.1.6",
-  "description": "Claude Code marketplace entry for Warden MCP",
+  "owner": {
+    "name": "Blu3Ph4ntom",
+    "url": "https://github.com/Blu3Ph4ntom"
+  },
+  "metadata": {
+    "description": "Claude Code marketplace entry for Warden MCP",
+    "version": "0.1.6"
+  },
   "plugins": [
     {
       "name": "warden-mcp",
       "version": "0.1.6",
       "description": "Plan-governance MCP server for Claude Code, Auggie, Codex, Cursor, Windsurf, and other coding agents",
-      "source": "."
+      "source": "./",
+      "author": {
+        "name": "Blu3Ph4ntom",
+        "url": "https://github.com/Blu3Ph4ntom"
+      },
+      "homepage": "https://github.com/Blu3Ph4ntom/warden-mcp",
+      "repository": "https://github.com/Blu3Ph4ntom/warden-mcp",
+      "license": "MIT",
+      "keywords": [
+        "mcp",
+        "claude-code",
+        "planning",
+        "governance"
+      ]
     }
   ]
 }
