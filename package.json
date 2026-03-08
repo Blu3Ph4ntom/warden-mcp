@@ -1,7 +1,7 @@
 {
   "name": "warden-mcp",
-  "version": "0.1.5",
-  "description": "Native npm installer and Go distribution for the Warden MCP server",
+  "version": "0.1.6",
+  "description": "Plan-governance MCP server for Claude Code, Auggie, Codex, Cursor, Windsurf, and other coding agents",
   "bin": {
     "warden-mcp": "./npm/warden-mcp.js"
   },
@@ -15,7 +15,7 @@
   "scripts": {
     "build:release": "node ./scripts/build-release-binaries.mjs",
     "postinstall": "node ./npm/install.js",
-    "test": "node --test test/npm-wrapper.test.mjs",
+    "test": "node --test test/npm-wrapper.test.mjs test/claude-plugin-manifests.test.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "engines": {
@@ -31,8 +31,18 @@
   "homepage": "https://github.com/Blu3Ph4ntom/warden-mcp#readme",
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "agent",
+    "coding-agents",
+    "ai-agent",
+    "augment",
+    "auggie",
+    "claude",
+    "claude-code",
+    "codex",
+    "cursor",
+    "windsurf",
     "planning",
     "governance"
   ],

@@ -1,0 +1,6 @@
+{
+  "name": "warden-mcp",
+  "version": "0.1.6",
+  "description": "Plan-governance MCP server for Claude Code, Auggie, Codex, Cursor, Windsurf, and other coding agents",
+  "mcpServers": "./.claude-plugin/mcp.json"
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "warden-mcp-marketplace",
+  "version": "0.1.6",
+  "description": "Claude Code marketplace entry for Warden MCP",
+  "plugins": [
+    {
+      "name": "warden-mcp",
+      "version": "0.1.6",
+      "description": "Plan-governance MCP server for Claude Code, Auggie, Codex, Cursor, Windsurf, and other coding agents",
+      "source": "."
+    }
+  ]
+}

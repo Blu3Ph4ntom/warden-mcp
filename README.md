@@ -2,7 +2,60 @@
 
 Warden MCP is a plan-governance MCP server for coding agents. It keeps agents on a concrete execution plan, makes progress explicit, and blocks premature "done" claims with finish-gate checks.
 
+## Fastest setup for Claude Code, Auggie, and most coding agents
+
+If you just want the easiest local install for an MCP-capable coding agent, use npm:
+
+```sh
+npm install -g warden-mcp
+warden-mcp health
+```
+
+Then add this MCP server entry:
+
+```json
+{
+  "mcpServers": {
+    "warden": {
+      "command": "warden-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+After your client connects, call these tools in order:
+
+1. `get_agent_guide`
+2. `health_check`
+3. `get_status`
+
+If your client supports Claude Code-style local MCP config, the same `warden-mcp` entry should work there too. That includes Claude Code directly and Claude-compatible setups such as Auggie-style local MCP flows.
+
 ## Install
+
+### Claude Code plugin marketplace (git repo)
+
+If you prefer Claude Code's plugin flow, this repository ships a repo-root plugin and marketplace entry.
+
+1. In Claude Code, run `/plugin marketplace add https://github.com/Blu3Ph4ntom/warden-mcp`
+2. Open `/plugin`, install `warden-mcp`, and enable it for your project or session
+
+The plugin launches Warden with `npx -y warden-mcp`, so Claude Code downloads the published npm package on first run instead of requiring a separate global install.
+
+### Recommended for most coding-agent users: npm
+
+This is the easiest path for Claude Code, Auggie, Cursor, Windsurf, Codex, and other local MCP clients.
+
+```sh
+npm install -g warden-mcp
+```
+
+Verify the install:
+
+```sh
+warden-mcp health
+```
 
 ### Native install via Go
 
@@ -15,7 +68,7 @@ go install github.com/Blu3Ph4ntom/warden-mcp/cmd/warden-mcp@latest
 Then make sure your Go bin directory is on `PATH` and verify the binary is available:
 
 ```sh
-warden-mcp --help
+warden-mcp health
 ```
 
 ### Native install via npm
@@ -29,10 +82,23 @@ npm install -g warden-mcp
 or:
 
 ```sh
-npx warden-mcp --help
+npx warden-mcp health
 ```
 
 This is now a **real native install path**. Go is not required for npm users, but the installer does need network access to the matching GitHub Release asset for the package version.
+
+## Quickstart for coding agents
+
+1. Install `warden-mcp` with npm or Go.
+2. Add `warden-mcp` as a local MCP server in your client config.
+3. If your client can set environment variables, set `WARDEN_WORKSPACE_ROOT` to your repo root.
+4. After connecting, call `get_agent_guide`, then `health_check`, then `get_status`.
+
+If your client does not have a custom startup flow yet, this one works well:
+
+```json
+{ "command": "warden-mcp", "args": [] }
+```
 
 ## What Warden MCP provides
 
@@ -54,18 +120,18 @@ When launched with no CLI args, `warden-mcp` now defaults to MCP server (`serve`
 
 The current public MCP tools are:
 
-- `init_plan`, `validate_plan`, `edit_plan`
+- `init_plan`, `health_check`, `get_agent_guide`, `validate_plan`, `edit_plan`
 - `get_status`, `get_next_task`, `prioritize_tasks`
 - `update_task`, `reset_task`, `request_finish`
 - `list_plans`, `import_plan`, `export_plan`, `archive_plan`
-- `reconcile_plan`, `health_check`
+- `reconcile_plan`
 
-For most clients, the first helpful call after connecting is `health_check`, followed by `get_status`.
+For most clients, the first helpful call after connecting is `get_agent_guide` or `health_check`, followed by `get_status`.
 
 ## Typical workflow
 
 1. Install `warden-mcp` and connect it as an MCP server.
-2. Run `health_check` and `get_status` to confirm the active plan context.
+2. Run `get_agent_guide` or `health_check`, then `get_status`, to confirm the active plan context.
 3. Create or import a plan with `init_plan` or `import_plan`.
 4. Use `get_next_task` and `update_task` as work progresses.
 5. Use `validate_plan` and `reconcile_plan` after manual edits or drift.
@@ -81,6 +147,10 @@ If an MCP client sends a bogus absolute default plan path expanded from an unsaf
 
 ### Claude Code (`.mcp.json`)
 
+This is the main copy/paste setup for Claude Code local MCP use:
+
+If you installed the repo plugin from the Claude marketplace flow above, you can skip this manual config and use the plugin instead.
+
 ```json
 {
   "mcpServers": {
@@ -91,6 +161,32 @@ If an MCP client sends a bogus absolute default plan path expanded from an unsaf
   }
 }
 ```
+
+If Claude Code lets you attach environment variables for the server, this is the safest repo-local variant:
+
+```json
+{
+  "mcpServers": {
+    "warden": {
+      "command": "warden-mcp",
+      "args": [],
+      "env": {
+        "WARDEN_WORKSPACE_ROOT": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
+### Auggie / Claude-compatible local MCP setup
+
+If Auggie is using a Claude Code-compatible local MCP flow, use the same `warden-mcp` command entry shown above. The important part is still just:
+
+```json
+{ "command": "warden-mcp", "args": [] }
+```
+
+If Auggie exposes environment variables for MCP servers, set `WARDEN_WORKSPACE_ROOT` to the project root so Warden stores the active plan inside the repo.
 
 ### Codex CLI (`~/.codex/config.toml`)
 
@@ -152,6 +248,18 @@ args = []
 
 If your client supports environment variables, add them alongside the command in that client's native format.
 
+For basically any coding agent with local MCP support, the server contract is the same:
+
+```json
+{ "command": "warden-mcp", "args": [] }
+```
+
+Recommended first calls after install are always:
+
+- `get_agent_guide`
+- `health_check`
+- `get_status`
+
 ## Release packaging
 
 For each npm release, publish matching GitHub Release assets first:
@@ -172,9 +280,11 @@ npm run build:release
 
 ## Troubleshooting
 
-- `warden-mcp: command not found`: ensure your Go bin directory is on `PATH`.
+- `warden-mcp: command not found`: ensure your Go bin directory is on `PATH`, then verify the install with `warden-mcp health`.
 - npm install failed to fetch the native binary: run `npm rebuild warden-mcp` or reinstall after publishing the matching GitHub Release assets.
-- client connects but the workflow seems unclear: run `health_check`, then `get_status`, and make sure the repository has a valid plan file.
+- client opens the wrong workspace or stores plans outside your repo: set `WARDEN_WORKSPACE_ROOT` to the project root in your MCP server config.
+- Auggie or another Claude-compatible client asks for a local MCP command: use `warden-mcp` with no args.
+- client connects but the workflow seems unclear: run `get_agent_guide`, then `health_check`, then `get_status`, and make sure the repository has a valid plan file.
 - manual plan edits caused drift: use `validate_plan` and `reconcile_plan` before continuing.
 
 ## Development

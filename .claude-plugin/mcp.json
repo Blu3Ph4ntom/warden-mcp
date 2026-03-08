@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "warden-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "warden-mcp"
+      ]
+    }
+  }
+}
