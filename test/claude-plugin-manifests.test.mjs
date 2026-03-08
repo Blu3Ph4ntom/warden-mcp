@@ -51,6 +51,10 @@ test('Claude plugin manifests stay aligned with package metadata', () => {
   assert.ok(hookConfig.hooks.SubagentStop?.length);
   assert.ok(hookConfig.hooks.TaskCompleted?.length);
   assert.ok(hookConfig.hooks.SessionStart?.length);
+  assert.equal(hookConfig.hooks.SessionStart[0].hooks[0].timeout, 30000);
+  assert.equal(hookConfig.hooks.Stop[0].hooks[0].timeout, 120000);
+  assert.equal(hookConfig.hooks.SubagentStop[0].hooks[0].timeout, 120000);
+  assert.equal(hookConfig.hooks.TaskCompleted[0].hooks[0].timeout, 120000);
 
   assert.match(
     readme,

@@ -433,3 +433,11 @@ completed_tasks: 146
 - [x] PH16-T03 Document Claude enforced mode, hook behavior, and troubleshooting guidance in the README
 - [x] PH16-T04 Record completed enforced-mode plan tasks with validation evidence
 
+## Phase 17 — Claude Hook Runtime Hardening
+- [x] PH17-T01 Correct Claude hook timeout units so enforced hooks do not fail after millisecond-scale timeouts
+- [x] PH17-T02 Add regression coverage for hook timeout magnitudes and blocking hook runtime expectations
+
+## Phase 18 — Timeout Fix Validation & Recording
+- [x] PH18-T01 Re-run targeted plugin/package validation after the timeout-unit fix
+- [x] PH18-T02 Record timeout-fix completion and validation evidence in the active plan
+

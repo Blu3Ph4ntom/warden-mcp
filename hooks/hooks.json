@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-session-start.cjs\"",
-            "timeout": 15
+            "timeout": 30000
           }
         ]
       }
@@ -20,7 +20,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-stop.cjs\"",
-            "timeout": 20
+            "timeout": 120000
           }
         ]
       }
@@ -32,7 +32,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-stop.cjs\"",
-            "timeout": 20
+            "timeout": 120000
           }
         ]
       }
@@ -44,7 +44,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-task-completed.cjs\"",
-            "timeout": 20
+            "timeout": 120000
           }
         ]
       }
