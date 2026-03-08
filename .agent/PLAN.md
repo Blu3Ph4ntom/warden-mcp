@@ -420,3 +420,16 @@ completed_tasks: 146
 - [x] PH14-T31 Align Claude plugin MCP config layout with repo-root plugin conventions and validate install expectations
 - [x] PH14-T32 Clarify client UX expectations so Auggie users do not expect slash commands from the Warden MCP tool server
 
+## Phase 15 — Claude Enforced Guardrails
+- [x] PH15-T01 Confirm Claude plugin hook packaging rules and lifecycle events required for enforced completion gating
+- [x] PH15-T02 Design the minimal enforced-mode control flow between Claude hooks and Warden CLI commands
+- [x] PH15-T03 Implement Claude hook runner scripts that call Warden finish/next/status commands safely from the workspace root
+- [x] PH15-T04 Add root-level plugin hook configuration to block Stop when Warden denies finish and to re-anchor after task completion
+- [x] PH15-T05 Add explicit Claude command or skill affordances for governed start/next/finish flows alongside automatic enforcement
+
+## Phase 16 — Enforced Mode Validation & Documentation
+- [x] PH16-T01 Add automated tests for hook decision generation and plugin layout expectations
+- [x] PH16-T02 Validate enforced-mode JSON outputs and relevant package tests locally
+- [x] PH16-T03 Document Claude enforced mode, hook behavior, and troubleshooting guidance in the README
+- [x] PH16-T04 Record completed enforced-mode plan tasks with validation evidence
+

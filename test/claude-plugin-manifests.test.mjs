@@ -15,6 +15,7 @@ test('Claude plugin manifests stay aligned with package metadata', () => {
   const plugin = readJson('.claude-plugin/plugin.json');
   const marketplace = readJson('.claude-plugin/marketplace.json');
   const mcpConfig = readJson('.mcp.json');
+  const hookConfig = readJson('hooks/hooks.json');
   const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
 
   assert.equal(plugin.name, pkg.name);
@@ -46,12 +47,18 @@ test('Claude plugin manifests stay aligned with package metadata', () => {
     },
   });
 
+  assert.ok(hookConfig.hooks.Stop?.length);
+  assert.ok(hookConfig.hooks.SubagentStop?.length);
+  assert.ok(hookConfig.hooks.TaskCompleted?.length);
+  assert.ok(hookConfig.hooks.SessionStart?.length);
+
   assert.match(
     readme,
     /\/plugin marketplace add https:\/\/github\.com\/Blu3Ph4ntom\/warden-mcp/,
   );
   assert.match(readme, /install `warden-mcp`/);
   assert.match(readme, /npx -y warden-mcp/);
-  assert.match(readme, /does not currently add custom slash commands/i);
+  assert.match(readme, /hooks \(`hooks\/hooks.json`\)/i);
+  assert.match(readme, /blocked from stopping when required work remains/i);
   assert.match(readme, /show up as MCP tools\/functions rather than slash commands/i);
 });

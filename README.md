@@ -43,7 +43,17 @@ If you prefer Claude Code's plugin flow, this repository ships a repo-root plugi
 
 The plugin launches Warden with `npx -y warden-mcp`, so Claude Code downloads the published npm package on first run instead of requiring a separate global install.
 
-This plugin installs an MCP tool server. It does not currently add custom slash commands.
+This plugin now ships three layers for Claude Code:
+
+- an MCP tool server (`.mcp.json`)
+- lifecycle hooks (`hooks/hooks.json`) for enforced completion gating
+- convenience command files (`commands/warden-start.md`, `commands/warden-next.md`, `commands/warden-finish.md`)
+
+The hooks are the important part: on `Stop` and `TaskCompleted`, Claude calls Warden's finish gate and gets blocked from stopping when required work remains.
+
+For the most reliable enforced mode, make sure `warden-mcp` is also available on your `PATH` (for example via `npm install -g warden-mcp` or a released binary). The hooks first try the local `warden-mcp` binary and only fall back to `npx -y warden-mcp` if needed.
+
+After installing or updating the plugin, restart Claude Code so the hook configuration reloads.
 
 ### Recommended for most coding-agent users: npm
 
@@ -153,6 +163,8 @@ This is the main copy/paste setup for Claude Code local MCP use:
 
 If you installed the repo plugin from the Claude marketplace flow above, you can skip this manual config and use the plugin instead.
 
+If you want hard completion guardrails without the marketplace plugin, add the MCP server config below and also copy the repo's `hooks/` directory into your Claude project/plugin setup. MCP alone is advisory; the hooks are what enforce `request_finish` before stopping.
+
 ```json
 {
   "mcpServers": {
@@ -191,6 +203,26 @@ If Auggie is using a Claude Code-compatible local MCP flow, use the same `warden
 If Auggie exposes environment variables for MCP servers, set `WARDEN_WORKSPACE_ROOT` to the project root so Warden stores the active plan inside the repo.
 
 In Auggie, expect Warden to show up as MCP tools/functions rather than slash commands. Use tool calls like `get_agent_guide`, `health_check`, and `get_status`.
+
+Hard stop-interception requires lifecycle hooks similar to Claude Code's `Stop` hook support. If Auggie does not expose that kind of hook/interceptor surface, it can use Warden tools but cannot be fully forced to obey the finish gate.
+
+### Claude Code enforced mode behavior
+
+When the plugin hooks are active, Claude Code should:
+
+1. inject a startup reminder that Warden enforcement is active,
+2. call Warden on `TaskCompleted` and `Stop`,
+3. block completion if `request_finish` says `can_finish: false`, and
+4. push Claude back to the next required task.
+
+If you want a visible bootstrap path in addition to automatic enforcement, use the plugin's Warden command files after install.
+
+If enforcement does not seem active:
+
+- restart Claude Code after the plugin update,
+- run Claude Code with debug logging and inspect loaded hooks,
+- confirm `warden-mcp health --plan .agent/PLAN.md` works in your shell,
+- if not, install `warden-mcp` globally or place the released binary on your `PATH`.
 
 ### Codex CLI (`~/.codex/config.toml`)
 

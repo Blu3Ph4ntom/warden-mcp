@@ -15,7 +15,7 @@
   "scripts": {
     "build:release": "node ./scripts/build-release-binaries.mjs",
     "postinstall": "node ./npm/install.js",
-    "test": "node --test test/npm-wrapper.test.mjs test/claude-plugin-manifests.test.mjs",
+    "test": "node --test test/npm-wrapper.test.mjs test/claude-plugin-manifests.test.mjs test/claude-hook-enforcement.test.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "engines": {
