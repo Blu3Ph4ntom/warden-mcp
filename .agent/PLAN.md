@@ -441,3 +441,11 @@ completed_tasks: 146
 - [x] PH18-T01 Re-run targeted plugin/package validation after the timeout-unit fix
 - [x] PH18-T02 Record timeout-fix completion and validation evidence in the active plan
 
+## Phase 19 — Cross-Client Hook Compatibility
+- [x] PH19-T01 Align shared marketplace hook config to the event subset accepted by Augment-compatible clients
+- [x] PH19-T02 Update docs to distinguish portable stop enforcement from Claude-only richer lifecycle hooks
+
+## Phase 20 — Compatibility Fix Validation & Recording
+- [x] PH20-T01 Re-run plugin/package validation after removing unsupported hook events from the shared config
+- [x] PH20-T02 Record Augment compatibility fix completion and validation evidence in the active plan
+

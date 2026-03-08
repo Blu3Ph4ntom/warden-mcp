@@ -43,13 +43,15 @@ If you prefer Claude Code's plugin flow, this repository ships a repo-root plugi
 
 The plugin launches Warden with `npx -y warden-mcp`, so Claude Code downloads the published npm package on first run instead of requiring a separate global install.
 
-This plugin now ships three layers for Claude Code:
+This plugin now ships three layers for Claude Code and compatible clients:
 
 - an MCP tool server (`.mcp.json`)
 - lifecycle hooks (`hooks/hooks.json`) for enforced completion gating
 - convenience command files (`commands/warden-start.md`, `commands/warden-next.md`, `commands/warden-finish.md`)
 
-The hooks are the important part: on `Stop` and `TaskCompleted`, Claude calls Warden's finish gate and gets blocked from stopping when required work remains.
+The hooks are the important part: on `Stop`, the client calls Warden's finish gate and gets blocked from stopping when required work remains.
+
+The shared marketplace hook config intentionally uses a conservative event subset that loads in Augment-compatible clients too. Richer Claude lifecycle events such as `TaskCompleted` and `SubagentStop` are not treated as portable defaults.
 
 For the most reliable enforced mode, make sure `warden-mcp` is also available on your `PATH` (for example via `npm install -g warden-mcp` or a released binary). The hooks first try the local `warden-mcp` binary and only fall back to `npx -y warden-mcp` if needed.
 
@@ -204,14 +206,14 @@ If Auggie exposes environment variables for MCP servers, set `WARDEN_WORKSPACE_R
 
 In Auggie, expect Warden to show up as MCP tools/functions rather than slash commands. Use tool calls like `get_agent_guide`, `health_check`, and `get_status`.
 
-Hard stop-interception requires lifecycle hooks similar to Claude Code's `Stop` hook support. If Auggie does not expose that kind of hook/interceptor surface, it can use Warden tools but cannot be fully forced to obey the finish gate.
+Hard stop-interception requires lifecycle hooks similar to Claude Code's `Stop` hook support. Augment-compatible clients appear to accept `SessionStart` and `Stop`, but not every Claude-specific lifecycle event. If a client lacks stop interception entirely, it can use Warden tools but cannot be fully forced to obey the finish gate.
 
 ### Claude Code enforced mode behavior
 
 When the plugin hooks are active, Claude Code should:
 
 1. inject a startup reminder that Warden enforcement is active,
-2. call Warden on `TaskCompleted` and `Stop`,
+2. call Warden on `Stop`,
 3. block completion if `request_finish` says `can_finish: false`, and
 4. push Claude back to the next required task.
 

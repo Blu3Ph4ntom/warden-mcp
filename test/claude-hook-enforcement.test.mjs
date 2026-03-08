@@ -36,10 +36,10 @@ test('sessionStartMessage advertises enforced mode and next task', () => {
 test('Claude plugin layout includes hooks and command files for enforced mode', () => {
   const hooks = JSON.parse(fs.readFileSync(path.join(repoRoot, 'hooks', 'hooks.json'), 'utf8'));
   assert.ok(hooks.hooks.Stop?.length);
-  assert.ok(hooks.hooks.TaskCompleted?.length);
   assert.ok(hooks.hooks.SessionStart?.length);
   assert.ok(hooks.hooks.Stop[0].hooks[0].timeout >= 10000);
-  assert.ok(hooks.hooks.TaskCompleted[0].hooks[0].timeout >= 10000);
+  assert.equal(hooks.hooks.TaskCompleted, undefined);
+  assert.equal(hooks.hooks.SubagentStop, undefined);
   for (const file of ['warden-start.md', 'warden-next.md', 'warden-finish.md']) {
     assert.ok(fs.existsSync(path.join(repoRoot, 'commands', file)), file);
   }

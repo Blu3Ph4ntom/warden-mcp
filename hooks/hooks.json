@@ -1,5 +1,5 @@
 {
-  "description": "Warden enforced completion hooks for Claude Code",
+  "description": "Warden enforced completion hooks for compatible coding clients",
   "hooks": {
     "SessionStart": [
       {
@@ -20,30 +20,6 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-stop.cjs\"",
-            "timeout": 120000
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-stop.cjs\"",
-            "timeout": 120000
-          }
-        ]
-      }
-    ],
-    "TaskCompleted": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/warden-task-completed.cjs\"",
             "timeout": 120000
           }
         ]

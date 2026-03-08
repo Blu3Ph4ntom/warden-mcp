@@ -48,13 +48,11 @@ test('Claude plugin manifests stay aligned with package metadata', () => {
   });
 
   assert.ok(hookConfig.hooks.Stop?.length);
-  assert.ok(hookConfig.hooks.SubagentStop?.length);
-  assert.ok(hookConfig.hooks.TaskCompleted?.length);
   assert.ok(hookConfig.hooks.SessionStart?.length);
   assert.equal(hookConfig.hooks.SessionStart[0].hooks[0].timeout, 30000);
   assert.equal(hookConfig.hooks.Stop[0].hooks[0].timeout, 120000);
-  assert.equal(hookConfig.hooks.SubagentStop[0].hooks[0].timeout, 120000);
-  assert.equal(hookConfig.hooks.TaskCompleted[0].hooks[0].timeout, 120000);
+  assert.equal(hookConfig.hooks.SubagentStop, undefined);
+  assert.equal(hookConfig.hooks.TaskCompleted, undefined);
 
   assert.match(
     readme,
@@ -64,5 +62,6 @@ test('Claude plugin manifests stay aligned with package metadata', () => {
   assert.match(readme, /npx -y warden-mcp/);
   assert.match(readme, /hooks \(`hooks\/hooks.json`\)/i);
   assert.match(readme, /blocked from stopping when required work remains/i);
+  assert.match(readme, /conservative event subset/i);
   assert.match(readme, /show up as MCP tools\/functions rather than slash commands/i);
 });
