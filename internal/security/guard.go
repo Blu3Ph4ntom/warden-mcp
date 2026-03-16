@@ -11,6 +11,7 @@ import (
 )
 
 const WorkspaceRootOverrideEnv = "WARDEN_WORKSPACE_ROOT"
+const AllowUnsafeWorkspaceFallbackEnv = "WARDEN_ALLOW_UNSAFE_WORKSPACE_FALLBACK"
 
 type WorkspaceRootResolution struct {
 	Root   string
@@ -31,6 +32,10 @@ type FileFingerprint struct {
 
 func ResolveProcessWorkspaceRoot() (WorkspaceRootResolution, error) {
 	return resolveProcessWorkspaceRoot(os.Getenv, os.Getwd, os.UserHomeDir)
+}
+
+func ResolveWorkspaceRoot(root string) (string, error) {
+	return normalizeWorkspaceRoot(root)
 }
 
 func IsUnsafeWorkspaceRootPath(root string) bool {
@@ -109,6 +114,9 @@ func resolveProcessWorkspaceRoot(getenv func(string) string, getwd func() (strin
 	}
 	if !isUnsafeWorkspaceRoot(resolvedCWD, getenv) {
 		return WorkspaceRootResolution{Root: resolvedCWD, Source: "cwd"}, nil
+	}
+	if strings.TrimSpace(getenv(AllowUnsafeWorkspaceFallbackEnv)) != "1" {
+		return WorkspaceRootResolution{}, fmt.Errorf("unsafe workspace root %q; set %s to your repo root or set %s=1 to opt into the legacy shared fallback", resolvedCWD, WorkspaceRootOverrideEnv, AllowUnsafeWorkspaceFallbackEnv)
 	}
 	home, err := userHomeDir()
 	if err != nil {

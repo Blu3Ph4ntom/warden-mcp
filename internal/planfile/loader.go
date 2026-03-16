@@ -62,6 +62,8 @@ func Parse(content string, updatedAt time.Time) (domain.Plan, []domain.Validatio
 		Title:          strings.TrimSpace(frontmatter["title"]),
 		Status:         domain.PlanStatus(strings.TrimSpace(frontmatter["status"])),
 		Version:        version,
+		WorkspaceRoot:  strings.TrimSpace(frontmatter["workspace_root"]),
+		PlanPath:       strings.TrimSpace(frontmatter["plan_path"]),
 		CurrentPhaseID: strings.TrimSpace(frontmatter["current_phase"]),
 		UpdatedAt:      updatedAt,
 	}

@@ -344,6 +344,21 @@ completed_tasks: 146
 - [ ] PH11-T19 Compatibility tests for common agent workflows
 - [ ] PH11-T20 Performance regression suite
 - [x] PH11-T21 Integration tests for agent bootstrap MCP guidance tool
+- [x] PH11-T22 Enforce workspace-scoped plan resolution and mismatch denials
+  notes:
+    - {"actor_type":"agent","text":"Locked Warden to fail closed on unsafe workspace bootstrap by default and added explicit workspace-mismatch validation for imported and loaded plan ownership metadata.","created_at":"2026-03-16T14:35:30Z"}
+  evidence:
+    - {"kind":"ref","ref":"Updated internal/security/guard.go to reject unsafe workspace roots unless WARDEN_ALLOW_UNSAFE_WORKSPACE_FALLBACK=1 is explicitly set.","summary":""}
+    - {"kind":"ref","ref":"Updated internal/api/api.go plus internal/domain/model.go and internal/planfile/loader.go to stamp workspace ownership at runtime and reject WORKSPACE_PLAN_MISMATCH cases.","summary":""}
+    - {"kind":"ref","ref":"go test ./internal/security ./internal/api ./cmd/warden-mcp ./internal/mcpserver","summary":""}
+- [x] PH11-T23 Add regression coverage for cross-workspace leakage and unsafe bootstrap fallback
+  notes:
+    - {"actor_type":"agent","text":"Added regression coverage for unsafe bootstrap rejection, explicit legacy fallback opt-in, and imported cross-workspace metadata rejection.","created_at":"2026-03-16T14:35:35Z"}
+  evidence:
+    - {"kind":"ref","ref":"Updated internal/security/guard_test.go with fail-closed and explicit-opt-in fallback cases.","summary":""}
+    - {"kind":"ref","ref":"Updated cmd/warden-mcp/main_test.go with unsafe workspace bootstrap rejection and explicit fallback coverage.","summary":""}
+    - {"kind":"ref","ref":"Updated internal/api/api_test.go with cross-workspace import rejection coverage.","summary":""}
+    - {"kind":"ref","ref":"go test ./...","summary":""}
 
 ## Phase 12 — Developer Experience & CLI
 - [x] PH12-T01 Define local setup flow
@@ -385,6 +400,12 @@ completed_tasks: 146
 - [x] PH13-T13 Write agent bootstrap MCP guide reference
 - [x] PH13-T15 Document workspace-root override and user-home fallback behavior
 - [x] PH13-T14 Document no-arg MCP server launch behavior for local client configs
+- [x] PH13-T16 Document strict workspace-scoping and unsafe-workspace fail-closed behavior
+  notes:
+    - {"actor_type":"agent","text":"Documented the new fail-closed workspace behavior, legacy fallback opt-in, and patch-release guidance for the cross-workspace leakage fix.","created_at":"2026-03-16T14:35:40Z"}
+  evidence:
+    - {"kind":"ref","ref":"Updated README.md workspace-root guidance to describe fail-closed behavior and explicit WARDEN_ALLOW_UNSAFE_WORKSPACE_FALLBACK opt-in.","summary":""}
+    - {"kind":"ref","ref":"Added docs/releases/v0.1.7.md with workspace-scoping security patch notes and validation checklist.","summary":""}
 
 ## Phase 14 — Packaging & Release
 - [ ] PH14-T01 Define repository structure
@@ -413,6 +434,7 @@ completed_tasks: 146
 - [ ] PH14-T24 Publish unsafe-launch workspace fallback patch release
 - [x] PH14-T25 Harden plan_path handling against unsafe absolute client-expanded defaults
 - [ ] PH14-T26 Publish plan_path hardening patch release
+- [ ] PH14-T33 Publish workspace-scoping security patch release
 - [x] PH14-T27 Package Claude Code git-marketplace plugin manifests for repo-root install
 - [x] PH14-T28 Document Claude plugin marketplace install flow alongside existing MCP setup guidance
 - [x] PH14-T29 Validate Claude plugin manifests, README instructions, and package metadata consistency
@@ -448,4 +470,3 @@ completed_tasks: 146
 ## Phase 20 — Compatibility Fix Validation & Recording
 - [x] PH20-T01 Re-run plugin/package validation after removing unsupported hook events from the shared config
 - [x] PH20-T02 Record Augment compatibility fix completion and validation evidence in the active plan
-

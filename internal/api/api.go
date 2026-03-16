@@ -44,6 +44,13 @@ func (a API) Init(req contracts.InitPlanRequest) contracts.ToolResponseEnvelope[
 		errObj := errorObject(contracts.ErrPlanInvalid, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.InitPlanData]{OK: false, Tool: "init_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
 	}
+	workspaceRoot, err := security.ResolveWorkspaceRoot(a.WorkspaceRoot)
+	if err != nil {
+		errObj := errorObject(contracts.ErrPlanInvalid, err.Error())
+		return contracts.ToolResponseEnvelope[contracts.InitPlanData]{OK: false, Tool: "init_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	plan.WorkspaceRoot = workspaceRoot
+	plan.PlanPath = resolved
 	if _, err := os.Stat(resolved); err == nil {
 		errObj := errorObject(contracts.ErrSyncConflict, "active plan already exists")
 		return contracts.ToolResponseEnvelope[contracts.InitPlanData]{OK: false, Tool: "init_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
@@ -111,12 +118,6 @@ func (a API) Import(req contracts.ImportPlanRequest) contracts.ToolResponseEnvel
 		a.record(observe.Event{Kind: "command", Command: "import", Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: errObj.Message, ErrorCode: errObj.Code})
 		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: false, Tool: "import_plan", Timestamp: timestamp(a.now()), Warnings: warnings, Error: errObj}
 	}
-	issues := dedupeWarnings(append(append([]domain.ValidationIssue{}, warnings...), plan.Validate()...))
-	data := contracts.ImportPlanData{Plan: service.PlanSummary(plan, plan.CanFinish), Issues: issues, ConflictsDetected: false}
-	if hasErrorIssues(issues) {
-		a.record(observe.Event{Kind: "command", Command: "import", PlanID: plan.PlanID, Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: "plan import rejected", ErrorCode: contracts.ErrImportInvalid})
-		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: true, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
-	}
 	mode := req.Mode
 	if mode == "" {
 		mode = contracts.ImportReplace
@@ -125,6 +126,22 @@ func (a API) Import(req contracts.ImportPlanRequest) contracts.ToolResponseEnvel
 	if err != nil {
 		errObj = errorObject(contracts.ErrImportInvalid, err.Error())
 		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: false, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	workspaceRoot, err := security.ResolveWorkspaceRoot(a.WorkspaceRoot)
+	if err != nil {
+		errObj = errorObject(contracts.ErrImportInvalid, err.Error())
+		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: false, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	if errObj = validatePlanWorkspaceOwnership(plan, workspaceRoot, resolved); errObj != nil {
+		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: false, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Error: errObj}
+	}
+	plan.WorkspaceRoot = workspaceRoot
+	plan.PlanPath = resolved
+	issues := dedupeWarnings(append(append([]domain.ValidationIssue{}, warnings...), plan.Validate()...))
+	data := contracts.ImportPlanData{Plan: service.PlanSummary(plan, plan.CanFinish), Issues: issues, ConflictsDetected: false}
+	if hasErrorIssues(issues) {
+		a.record(observe.Event{Kind: "command", Command: "import", PlanID: plan.PlanID, Accepted: observe.Accepted(false), DurationMS: observe.Since(start), Message: "plan import rejected", ErrorCode: contracts.ErrImportInvalid})
+		return contracts.ToolResponseEnvelope[contracts.ImportPlanData]{OK: true, Tool: "import_plan", Timestamp: timestamp(a.now()), PlanID: plan.PlanID, Warnings: warnings, Data: data}
 	}
 	_, statErr := os.Stat(resolved)
 	if mode == contracts.ImportCreate && statErr == nil {
@@ -451,6 +468,10 @@ func (a API) loadPlan(planPath string) (string, domain.Plan, []domain.Validation
 	if err != nil {
 		return "", domain.Plan{}, nil, errorObject(contracts.ErrPlanInvalid, err.Error())
 	}
+	workspaceRoot, err := security.ResolveWorkspaceRoot(a.WorkspaceRoot)
+	if err != nil {
+		return resolved, domain.Plan{}, nil, errorObject(contracts.ErrPlanInvalid, err.Error())
+	}
 	plan, warnings, err := planfile.Load(resolved)
 	if err != nil {
 		if errors.Is(err, planfile.ErrPlanTooLarge) || errors.Is(err, planfile.ErrPlanTooManyLines) {
@@ -458,6 +479,11 @@ func (a API) loadPlan(planPath string) (string, domain.Plan, []domain.Validation
 		}
 		return resolved, domain.Plan{}, warnings, errorObject(contracts.ErrPlanNotFound, err.Error())
 	}
+	if errObj := validatePlanWorkspaceOwnership(plan, workspaceRoot, resolved); errObj != nil {
+		return resolved, domain.Plan{}, warnings, errObj
+	}
+	plan.WorkspaceRoot = workspaceRoot
+	plan.PlanPath = resolved
 	return resolved, plan, warnings, nil
 }
 
@@ -503,6 +529,12 @@ func errorObject(code, message string) *contracts.ErrorObject {
 	return &contracts.ErrorObject{Code: code, Message: security.RedactSecretLikeText(message), Retryable: false, Details: map[string]any{}}
 }
 
+func errorObjectWithDetails(code, message string, details map[string]any) *contracts.ErrorObject {
+	errObj := errorObject(code, message)
+	errObj.Details = details
+	return errObj
+}
+
 func firstBlockingCode(blocking []contracts.BlockingReason) string {
 	if len(blocking) == 0 {
 		return ""
@@ -522,6 +554,40 @@ func requirePlanIdentity(plan domain.Plan, requested string) *contracts.ErrorObj
 		return nil
 	}
 	return errorObject(contracts.ErrSyncConflict, "requested plan_id does not match active plan")
+}
+
+func validatePlanWorkspaceOwnership(plan domain.Plan, workspaceRoot, resolvedPlanPath string) *contracts.ErrorObject {
+	if strings.TrimSpace(plan.WorkspaceRoot) != "" {
+		declaredRoot, err := security.ResolveWorkspaceRoot(plan.WorkspaceRoot)
+		if err != nil {
+			return errorObject(contracts.ErrPlanInvalid, err.Error())
+		}
+		if !strings.EqualFold(declaredRoot, workspaceRoot) {
+			return workspaceMismatchError(workspaceRoot, declaredRoot, resolvedPlanPath)
+		}
+	}
+	if strings.TrimSpace(plan.PlanPath) != "" {
+		declaredPlanPath, err := security.ResolveWorkspacePath(workspaceRoot, plan.PlanPath, ".md")
+		if err != nil {
+			return workspaceMismatchError(workspaceRoot, filepath.Dir(filepath.Dir(filepath.Clean(plan.PlanPath))), plan.PlanPath)
+		}
+		if !strings.EqualFold(declaredPlanPath, resolvedPlanPath) {
+			return workspaceMismatchError(workspaceRoot, filepath.Dir(filepath.Dir(declaredPlanPath)), declaredPlanPath)
+		}
+	}
+	return nil
+}
+
+func workspaceMismatchError(workspaceRoot, planWorkspaceRoot, planPath string) *contracts.ErrorObject {
+	return errorObjectWithDetails(
+		contracts.ErrWorkspacePlanMismatch,
+		fmt.Sprintf("plan workspace %q does not match current workspace %q", planWorkspaceRoot, workspaceRoot),
+		map[string]any{
+			"workspace_root":      workspaceRoot,
+			"plan_workspace_root": planWorkspaceRoot,
+			"plan_path":           planPath,
+		},
+	)
 }
 
 func combineHealthStatus(current, next string) string {

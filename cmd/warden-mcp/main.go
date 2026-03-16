@@ -53,7 +53,7 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	workspace, err := security.ResolveProcessWorkspaceRoot()
 	if err != nil {
-		return writeError(stdout, command, contracts.ErrInternal, err.Error())
+		return writeError(stdout, command, contracts.ErrPlanInvalid, err.Error())
 	}
 	workspaceRoot := workspace.Root
 	var recorder observe.Recorder

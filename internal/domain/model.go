@@ -93,6 +93,8 @@ type Plan struct {
 	Title          string     `json:"title"`
 	Status         PlanStatus `json:"status"`
 	Version        string     `json:"version"`
+	WorkspaceRoot  string     `json:"workspace_root,omitempty"`
+	PlanPath       string     `json:"plan_path,omitempty"`
 	CurrentPhaseID string     `json:"current_phase_id,omitempty"`
 	Phases         []Phase    `json:"phases"`
 	CanFinish      bool       `json:"can_finish"`

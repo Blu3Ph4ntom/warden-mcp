@@ -66,15 +66,40 @@ func TestResolveProcessWorkspaceRootPrefersExplicitOverride(t *testing.T) {
 	}
 }
 
-func TestResolveProcessWorkspaceRootFallsBackFromWindowsSystemDirectory(t *testing.T) {
+func TestResolveProcessWorkspaceRootRejectsUnsafeWorkspaceByDefault(t *testing.T) {
 	base := t.TempDir()
 	windir := filepath.Join(base, "Windows")
-	home := filepath.Join(base, "home")
 	resolution, err := resolveProcessWorkspaceRoot(func(key string) string {
 		if key == "WINDIR" {
 			return windir
 		}
 		return ""
+	}, func() (string, error) {
+		return filepath.Join(windir, "System32"), nil
+	}, func() (string, error) {
+		return filepath.Join(base, "home"), nil
+	})
+	if err == nil {
+		t.Fatalf("expected unsafe workspace root to fail, got %+v", resolution)
+	}
+	if !strings.Contains(err.Error(), WorkspaceRootOverrideEnv) {
+		t.Fatalf("expected override guidance in error, got %v", err)
+	}
+}
+
+func TestResolveProcessWorkspaceRootAllowsUnsafeFallbackWhenExplicitlyEnabled(t *testing.T) {
+	base := t.TempDir()
+	windir := filepath.Join(base, "Windows")
+	home := filepath.Join(base, "home")
+	resolution, err := resolveProcessWorkspaceRoot(func(key string) string {
+		switch key {
+		case "WINDIR":
+			return windir
+		case AllowUnsafeWorkspaceFallbackEnv:
+			return "1"
+		default:
+			return ""
+		}
 	}, func() (string, error) {
 		return filepath.Join(windir, "System32"), nil
 	}, func() (string, error) {

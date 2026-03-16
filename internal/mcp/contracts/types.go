@@ -64,6 +64,7 @@ const (
 	ErrDependencyViolation   = "DEPENDENCY_VIOLATION"
 	ErrFinishDenied          = "FINISH_DENIED"
 	ErrSyncConflict          = "SYNC_CONFLICT"
+	ErrWorkspacePlanMismatch = "WORKSPACE_PLAN_MISMATCH"
 	ErrImportInvalid         = "IMPORT_INVALID"
 	ErrExportFailed          = "EXPORT_FAILED"
 	ErrArchiveDenied         = "ARCHIVE_DENIED"

@@ -98,6 +98,28 @@ func TestImportJSONCreatesNormalizedMarkdown(t *testing.T) {
 	}
 }
 
+func TestImportRejectsCrossWorkspaceJSONMetadata(t *testing.T) {
+	root := t.TempDir()
+	app := New(root, nil)
+	contentBytes, err := json.Marshal(domain.Plan{
+		PlanID:        "foreign-plan",
+		Title:         "Foreign Plan",
+		Version:       "1.0.0",
+		WorkspaceRoot: filepath.Join(t.TempDir(), "other-workspace"),
+		PlanPath:      filepath.Join(t.TempDir(), "other-workspace", ".agent", "PLAN.md"),
+		Phases: []domain.Phase{
+			{Title: "Plan", Tasks: []domain.Task{{Title: "draft work", Required: true}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	result := app.Import(contracts.ImportPlanRequest{Format: contracts.ImportJSON, Content: string(contentBytes), Mode: contracts.ImportCreate})
+	if result.OK || result.Error == nil || result.Error.Code != contracts.ErrWorkspacePlanMismatch {
+		t.Fatalf("expected workspace mismatch rejection, got %+v", result)
+	}
+}
+
 func TestStatusRejectsPlanIDMismatch(t *testing.T) {
 	root := t.TempDir()
 	planPath := filepath.Join(root, ".agent", "PLAN.md")
