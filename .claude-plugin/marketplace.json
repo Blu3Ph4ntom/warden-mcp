@@ -7,12 +7,12 @@
   },
   "metadata": {
     "description": "Claude Code marketplace entry for Warden MCP",
-    "version": "0.1.6"
+  "version": "0.1.7"
   },
   "plugins": [
     {
       "name": "warden-mcp",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "description": "Plan-governance MCP server for Claude Code, Auggie, Codex, Cursor, Windsurf, and other coding agents",
       "source": "./",
       "author": {

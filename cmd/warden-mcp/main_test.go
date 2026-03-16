@@ -304,6 +304,35 @@ func TestRunRejectsPlanPathOutsideWorkspace(t *testing.T) {
 	}
 }
 
+func TestRunRejectsUnsafeWorkspaceBootstrapByDefault(t *testing.T) {
+	base := t.TempDir()
+	windir := filepath.Join(base, "Windows")
+	unsafeRoot := filepath.Join(windir, "System32")
+	if err := os.MkdirAll(unsafeRoot, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(previousWD) }()
+	if err := os.Chdir(unsafeRoot); err != nil {
+		t.Fatalf("chdir failed: %v", err)
+	}
+	t.Setenv("WINDIR", windir)
+	t.Setenv("HOME", filepath.Join(base, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(base, "home"))
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"status", "-plan", filepath.Join(".agent", "PLAN.md")}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected JSON error envelope exit code 0, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "\"code\": \"PLAN_INVALID\"") || !strings.Contains(stdout.String(), "WARDEN_WORKSPACE_ROOT") {
+		t.Fatalf("expected unsafe workspace bootstrap error, got %s", stdout.String())
+	}
+}
+
 func TestRunUpdateCommandMutatesPlanFile(t *testing.T) {
 	root := t.TempDir()
 	planPath := filepath.Join(root, ".agent", "PLAN.md")
@@ -374,7 +403,7 @@ func TestRunWithoutArgsDefaultsToServeAndHandlesStatusCall(t *testing.T) {
 	testRunServeLikeCommandHandlesInitializeAndStatusCall(t, []string{})
 }
 
-func TestRunFallsBackFromUnsafeWindowsCWDForInitPlan(t *testing.T) {
+func TestRunAllowsExplicitUnsafeFallbackForInitPlan(t *testing.T) {
 	base := t.TempDir()
 	windir := filepath.Join(base, "Windows")
 	unsafeCWD := filepath.Join(windir, "System32")
@@ -388,6 +417,7 @@ func TestRunFallsBackFromUnsafeWindowsCWDForInitPlan(t *testing.T) {
 	t.Setenv("WINDIR", windir)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
+	t.Setenv("WARDEN_ALLOW_UNSAFE_WORKSPACE_FALLBACK", "1")
 	previousWD, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd failed: %v", err)

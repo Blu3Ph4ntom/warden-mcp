@@ -153,7 +153,7 @@ For most clients, the first helpful call after connecting is `get_agent_guide` o
 
 By default, repository plans typically live at `.agent/PLAN.md`.
 
-If `warden-mcp` is launched from an unsafe OS directory such as Windows `System32`, it will refuse to treat that location as the workspace and will fall back to `~/.warden-mcp/workspaces/default/.agent/PLAN.md` instead. If your MCP client supports environment variables, set `WARDEN_WORKSPACE_ROOT` to your project root to keep plans stored inside the repo.
+If `warden-mcp` is launched from an unsafe OS directory such as Windows `System32`, it now fails closed instead of silently reusing a shared fallback workspace. In coding-agent setups, set `WARDEN_WORKSPACE_ROOT` to your project root so plan resolution stays pinned to the repo. If you deliberately need the legacy shared fallback for a non-agent workflow, opt in with `WARDEN_ALLOW_UNSAFE_WORKSPACE_FALLBACK=1`.
 
 If an MCP client sends a bogus absolute default plan path expanded from an unsafe OS directory, such as `C:\\Windows\\System32\\.agent\\PLAN.md`, Warden will ignore that unsafe absolute default and resolve the active workspace plan path instead.
 
@@ -202,7 +202,7 @@ If Auggie is using a Claude Code-compatible local MCP flow, use the same `warden
 { "command": "warden-mcp", "args": [] }
 ```
 
-If Auggie exposes environment variables for MCP servers, set `WARDEN_WORKSPACE_ROOT` to the project root so Warden stores the active plan inside the repo.
+If Auggie exposes environment variables for MCP servers, set `WARDEN_WORKSPACE_ROOT` to the project root so Warden stores the active plan inside the repo and does not reuse another workspace's active plan.
 
 In Auggie, expect Warden to show up as MCP tools/functions rather than slash commands. Use tool calls like `get_agent_guide`, `health_check`, and `get_status`.
 
@@ -320,7 +320,7 @@ npm run build:release
 
 - `warden-mcp: command not found`: ensure your Go bin directory is on `PATH`, then verify the install with `warden-mcp health`.
 - npm install failed to fetch the native binary: run `npm rebuild warden-mcp` or reinstall after publishing the matching GitHub Release assets.
-- client opens the wrong workspace or stores plans outside your repo: set `WARDEN_WORKSPACE_ROOT` to the project root in your MCP server config.
+- client opens the wrong workspace or stores plans outside your repo: set `WARDEN_WORKSPACE_ROOT` to the project root in your MCP server config. Warden now rejects unsafe launch roots by default instead of falling back to a shared home workspace.
 - Auggie or another Claude-compatible client asks for a local MCP command: use `warden-mcp` with no args.
 - client connects but the workflow seems unclear: run `get_agent_guide`, then `health_check`, then `get_status`, and make sure the repository has a valid plan file.
 - manual plan edits caused drift: use `validate_plan` and `reconcile_plan` before continuing.
